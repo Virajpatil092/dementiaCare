@@ -1,11 +1,43 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, TextInput, Modal, Alert } from 'react-native';
 import { useAuth } from '../../context/auth';
-import { Settings, LogOut, Bell, Shield, User, Heart } from 'lucide-react-native';
+import { Settings, LogOut, Bell, Shield, User, Heart, Plus, Link, X } from 'lucide-react-native';
 
 export default function ProfileScreen() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, connectToPatient, getPatientDetails } = useAuth();
   const isPatient = user?.role === 'patient';
+  const [connectModalVisible, setConnectModalVisible] = useState(false);
+  const [patientId, setPatientId] = useState('');
+  const [connectedPatients, setConnectedPatients] = useState<any[]>([]);
+
+  // Fetch connected patients details
+  React.useEffect(() => {
+    if (user?.role === 'caretaker' && user.connectedPatients) {
+      const patients = user.connectedPatients.map(id => getPatientDetails(id)).filter(Boolean);
+      setConnectedPatients(patients);
+    }
+  }, [user]);
+
+  const handleConnectToPatient = async () => {
+    if (!patientId.trim()) {
+      Alert.alert('Error', 'Please enter a valid patient ID');
+      return;
+    }
+
+    try {
+      await connectToPatient(patientId);
+      setConnectModalVisible(false);
+      setPatientId('');
+      
+      // Refresh connected patients
+      if (user?.role === 'caretaker' && user.connectedPatients) {
+        const patients = user.connectedPatients.map(id => getPatientDetails(id)).filter(Boolean);
+        setConnectedPatients(patients);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to connect to patient');
+    }
+  };
 
   const PatientProfile = () => (
     <ScrollView style={styles.container}>
@@ -16,6 +48,10 @@ export default function ProfileScreen() {
         />
         <Text style={styles.name}>{user?.name}</Text>
         <Text style={styles.role}>Patient</Text>
+        <View style={styles.idContainer}>
+          <Text style={styles.idLabel}>Your ID (for caretaker connection):</Text>
+          <Text style={styles.idValue}>{user?.id}</Text>
+        </View>
       </View>
 
       <View style={styles.section}>
@@ -27,7 +63,9 @@ export default function ProfileScreen() {
           </View>
           <View style={styles.infoItem}>
             <Text style={styles.infoLabel}>Emergency Contact</Text>
-            <Text style={styles.infoValue}>Sarah Caretaker</Text>
+            <Text style={styles.infoValue}>
+              {user?.caretakerId ? 'Sarah Caretaker' : 'Not set'}
+            </Text>
           </View>
           <View style={styles.infoItem}>
             <Text style={styles.infoLabel}>Medical Conditions</Text>
@@ -85,7 +123,7 @@ export default function ProfileScreen() {
           </View>
           <View style={styles.infoItem}>
             <Text style={styles.infoLabel}>Patients</Text>
-            <Text style={styles.infoValue}>1 Active Patient</Text>
+            <Text style={styles.infoValue}>{connectedPatients.length} Active Patient(s)</Text>
           </View>
           <View style={styles.infoItem}>
             <Text style={styles.infoLabel}>Experience</Text>
@@ -95,19 +133,40 @@ export default function ProfileScreen() {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Patient Management</Text>
-        <View style={styles.patientCard}>
-          <View style={styles.patientHeader}>
-            <User color="#4A90E2" size={24} />
-            <View style={styles.patientInfo}>
-              <Text style={styles.patientName}>John Patient</Text>
-              <Text style={styles.patientStatus}>Active</Text>
-            </View>
-          </View>
-          <TouchableOpacity style={styles.viewDetailsButton}>
-            <Text style={styles.viewDetailsText}>View Details</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Patient Management</Text>
+          <TouchableOpacity 
+            style={styles.addButton}
+            onPress={() => setConnectModalVisible(true)}
+          >
+            <Plus color="#fff" size={20} />
           </TouchableOpacity>
         </View>
+        
+        {connectedPatients.length > 0 ? (
+          connectedPatients.map((patient) => (
+            <View key={patient.id} style={styles.patientCard}>
+              <View style={styles.patientHeader}>
+                <User color="#4A90E2" size={24} />
+                <View style={styles.patientInfo}>
+                  <Text style={styles.patientName}>{patient.name}</Text>
+                  <Text style={styles.patientStatus}>Active</Text>
+                </View>
+              </View>
+              <TouchableOpacity style={styles.viewDetailsButton}>
+                <Text style={styles.viewDetailsText}>View Details</Text>
+              </TouchableOpacity>
+            </View>
+          ))
+        ) : (
+          <View style={styles.emptyState}>
+            <Link color="#666" size={40} />
+            <Text style={styles.emptyStateText}>No patients connected</Text>
+            <Text style={styles.emptyStateSubtext}>
+              Connect to a patient using their ID
+            </Text>
+          </View>
+        )}
       </View>
 
       <View style={styles.section}>
@@ -132,6 +191,46 @@ export default function ProfileScreen() {
         <LogOut color="#fff" size={20} />
         <Text style={styles.logoutText}>Sign Out</Text>
       </TouchableOpacity>
+
+      {/* Connect to Patient Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={connectModalVisible}
+        onRequestClose={() => setConnectModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Connect to Patient</Text>
+              <TouchableOpacity 
+                onPress={() => setConnectModalVisible(false)}
+                style={styles.closeButton}
+              >
+                <X color="#666" size={24} />
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={styles.modalText}>
+              Enter the patient's ID to connect and manage their care
+            </Text>
+            
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Patient ID"
+              value={patientId}
+              onChangeText={setPatientId}
+            />
+            
+            <TouchableOpacity 
+              style={styles.modalButton}
+              onPress={handleConnectToPatient}
+            >
+              <Text style={styles.modalButtonText}>Connect</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 
@@ -164,14 +263,46 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 5,
   },
+  idContainer: {
+    marginTop: 15,
+    padding: 10,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 8,
+    width: '100%',
+    alignItems: 'center',
+  },
+  idLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 5,
+  },
+  idValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+  },
   section: {
     padding: 20,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
     marginBottom: 15,
+  },
+  addButton: {
+    backgroundColor: '#4A90E2',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   infoCard: {
     backgroundColor: '#fff',
@@ -243,6 +374,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
+    marginBottom: 15,
   },
   patientHeader: {
     flexDirection: 'row',
@@ -293,5 +425,82 @@ const styles = StyleSheet.create({
     marginLeft: 15,
     fontSize: 16,
     color: '#333',
+  },
+  emptyState: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 30,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginTop: 15,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 5,
+    textAlign: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    width: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  closeButton: {
+    padding: 5,
+  },
+  modalText: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 20,
+  },
+  modalInput: {
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 20,
+    fontSize: 16,
+  },
+  modalButton: {
+    backgroundColor: '#4A90E2',
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
