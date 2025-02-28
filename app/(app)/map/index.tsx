@@ -394,8 +394,15 @@ export default function MapScreen() {
           </>
         )}
       </View>
+    </View>
+  );
 
-      {/* Add Route Modal */}
+  return (
+    isPatient ? <PatientMap /> : 
+    
+    <>
+      <CaretakerMap />
+
       <Modal
         animationType="slide"
         transparent={true}
@@ -451,10 +458,10 @@ export default function MapScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+      
+    </>
+  
   );
-
-  return isPatient ? <PatientMap /> : <CaretakerMap />;
 }
 
 const styles = StyleSheet.create({

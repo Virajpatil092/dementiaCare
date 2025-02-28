@@ -191,8 +191,13 @@ export default function ProfileScreen() {
         <LogOut color="#fff" size={20} />
         <Text style={styles.logoutText}>Sign Out</Text>
       </TouchableOpacity>
+    </ScrollView>
+  );
 
-      {/* Connect to Patient Modal */}
+  return (
+    <View style={{ flex: 1 }}>
+      {isPatient ? <PatientProfile /> : <CaretakerProfile />}
+
       <Modal
         animationType="slide"
         transparent={true}
@@ -231,10 +236,8 @@ export default function ProfileScreen() {
           </View>
         </View>
       </Modal>
-    </ScrollView>
+    </View>
   );
-
-  return isPatient ? <PatientProfile /> : <CaretakerProfile />;
 }
 
 const styles = StyleSheet.create({

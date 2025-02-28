@@ -277,7 +277,14 @@ export default function ScheduleScreen() {
         )}
       </View>
 
-      {/* Add Schedule Item Modal */}
+      
+    </ScrollView>
+  );
+
+  return (
+    isPatient ? <PatientSchedule /> : 
+    <>
+      <CaretakerSchedule />
       <Modal
         animationType="slide"
         transparent={true}
@@ -386,10 +393,9 @@ export default function ScheduleScreen() {
           </View>
         </View>
       </Modal>
-    </ScrollView>
+    </>
+  
   );
-
-  return isPatient ? <PatientSchedule /> : <CaretakerSchedule />;
 }
 
 const styles = StyleSheet.create({

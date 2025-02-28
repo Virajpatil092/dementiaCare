@@ -301,8 +301,12 @@ export default function HomeScreen() {
           </>
         )}
       </SafeAreaView>
+    </ScrollView>
+  );
 
-      {/* Add Photo Modal */}
+  return (
+    isPatient ? <PatientDashboard /> : 
+    <><CaretakerDashboard />
       <Modal
         animationType="slide"
         transparent={true}
@@ -362,10 +366,8 @@ export default function HomeScreen() {
           </View>
         </View>
       </Modal>
-    </ScrollView>
+    </>
   );
-
-  return isPatient ? <PatientDashboard /> : <CaretakerDashboard />;
 }
 
 const styles = StyleSheet.create({
