@@ -5,7 +5,6 @@ import { Bell, Brain, MapPin, Calendar, CircleAlert as AlertCircle, Plus, X, Ima
 import { FamilyPhoto } from '../../types/auth';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
-import * as ImageManipulator from 'expo-image-manipulator';
 
 export default function HomeScreen() {
   const { user, getFamilyPhotos, addFamilyPhoto, getPatientDetails } = useAuth();
@@ -45,7 +44,7 @@ export default function HomeScreen() {
       const { status: libraryStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       const { status: mediaLibraryStatus } = await MediaLibrary.requestPermissionsAsync();
       
-      if (cameraStatus !== 'granted' || libraryStatus !== 'granted') {
+      if (cameraStatus !== 'granted' || libraryStatus !== 'granted' || mediaLibraryStatus !== 'granted') {
         Alert.alert('Permission required', 'Please grant camera and photo library permissions to use this feature.');
         return false;
       }
@@ -60,21 +59,14 @@ export default function HomeScreen() {
 
     try {
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
-        quality: 0.8,
+        quality: 1,
       });
 
       if (!result.canceled) {
-        // Compress the image to reduce size
-        const manipResult = await ImageManipulator.manipulateAsync(
-          result.assets[0].uri,
-          [{ resize: { width: 800 } }],
-          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
-        );
-        
-        setPhotoUri(manipResult.uri);
+        setPhotoUri(result.assets[0].uri);
         setPhotoPickerVisible(false);
       }
     } catch (error) {
@@ -87,22 +79,16 @@ export default function HomeScreen() {
     if (!hasPermission) return;
 
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      let result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
         allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
+        aspect: [16, 9],
+        quality: 1,
       });
 
-      if (!result.canceled) {
-        // Compress the image to reduce size
-        const manipResult = await ImageManipulator.manipulateAsync(
-          result.assets[0].uri,
-          [{ resize: { width: 800 } }],
-          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
-        );
-        
-        setPhotoUri(manipResult.uri);
+      
+      if (!result.canceled) {        
+        setPhotoUri(result.assets[0].uri);
         setPhotoPickerVisible(false);
       }
     } catch (error) {
