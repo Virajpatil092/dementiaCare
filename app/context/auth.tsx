@@ -1,5 +1,5 @@
 import { createContext, useContext, useState } from 'react';
-import { AuthState, User, UserRole, Medication, ScheduleItem, WalkingRoute, FamilyPhoto } from '../types/auth';
+import { AuthState, User, UserRole, Medication, ScheduleItem, WalkingRoute, FamilyPhoto, Game } from '../types/auth';
 
 interface AuthContextType extends AuthState {
   signIn: (email: string, password: string) => Promise<void>;
@@ -16,6 +16,8 @@ interface AuthContextType extends AuthState {
   addFamilyPhoto: (photo: Omit<FamilyPhoto, 'id'>) => Promise<void>;
   getFamilyPhotos: (patientId: string) => FamilyPhoto[];
   updateScheduleItemStatus: (itemId: string, completed: boolean) => Promise<void>;
+  addGame: (game: Omit<Game, 'id'>) => Promise<void>;
+  getGames: (patientId: string) => Game[];
 }
 
 // Mock users for development
@@ -59,6 +61,35 @@ const mockWalkingRoutes: WalkingRoute[] = [
   }
 ];
 const mockFamilyPhotos: FamilyPhoto[] = [];
+const mockGames: Game[] = [
+  {
+    id: '1',
+    title: 'Memory Match',
+    description: 'Match pairs of cards to train your memory',
+    difficulty: 'Easy',
+    duration: '5-10 min',
+    icon: 'Brain',
+    patientId: '1'
+  },
+  {
+    id: '2',
+    title: 'Word Puzzle',
+    description: 'Find hidden words to enhance vocabulary',
+    difficulty: 'Medium',
+    duration: '10-15 min',
+    icon: 'Brain',
+    patientId: '1'
+  },
+  {
+    id: '3',
+    title: 'Pattern Recognition',
+    description: 'Identify and complete patterns',
+    difficulty: 'Hard',
+    duration: '15-20 min',
+    icon: 'Brain',
+    patientId: '1'
+  }
+];
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -374,6 +405,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return mockFamilyPhotos.filter(photo => photo.patientId === patientId);
   };
 
+  const addGame = async (game: Omit<Game, 'id'>) => {
+    try {
+      setState(prev => ({ ...prev, loading: true, error: null }));
+      
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      const newGame: Game = {
+        ...game,
+        id: Math.random().toString(),
+      };
+      
+      mockGames.push(newGame);
+      
+      setState(prev => ({
+        ...prev,
+        loading: false,
+        error: null,
+      }));
+    } catch (error) {
+      setState(prev => ({
+        ...prev,
+        loading: false,
+        error: 'Failed to add game',
+      }));
+    }
+  };
+
+  const getGames = (patientId: string): Game[] => {
+    return mockGames.filter(game => game.patientId === patientId);
+  };
+
   return (
     <AuthContext.Provider value={{ 
       ...state, 
@@ -390,7 +453,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       getWalkingRoutes,
       addFamilyPhoto,
       getFamilyPhotos,
-      updateScheduleItemStatus
+      updateScheduleItemStatus,
+      addGame,
+      getGames
     }}>
       {children}
     </AuthContext.Provider>

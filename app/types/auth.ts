@@ -54,3 +54,13 @@ export interface FamilyPhoto {
   patientId: string;
   isLocal?: boolean;
 }
+
+export interface Game {
+  id: string;
+  title: string;
+  description: string;
+  difficulty: string;
+  duration: string;
+  icon: string;
+  patientId: string;
+}
