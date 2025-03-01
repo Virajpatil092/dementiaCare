@@ -64,3 +64,13 @@ export interface Game {
   icon: string;
   patientId: string;
 }
+
+export interface Message {
+  id: string;
+  text: string;
+  sender: 'user' | 'ai';
+  timestamp: Date;
+  isVoice: boolean;
+  voiceDuration?: number;
+  audioUri?: string;
+}
