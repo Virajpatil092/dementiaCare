@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Platform, SafeAreaView, Modal, TextInput, Alert } from 'react-native';
 import { useAuth } from '../../context/auth';
-import { Bell, Brain, MapPin, Calendar, CircleAlert as AlertCircle, Plus, X, Image as ImageIcon } from 'lucide-react-native';
+import { Bell, Brain, MapPin, Calendar, CircleAlert as AlertCircle, Plus, X, Image as ImageIcon, Camera } from 'lucide-react-native';
 import { FamilyPhoto } from '../../types/auth';
+import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
+import * as ImageManipulator from 'expo-image-manipulator';
 
 export default function HomeScreen() {
   const { user, getFamilyPhotos, addFamilyPhoto, getPatientDetails } = useAuth();
@@ -14,15 +17,16 @@ export default function HomeScreen() {
   
   // Form state
   const [photoTitle, setPhotoTitle] = useState('');
-  const [photoUrl, setPhotoUrl] = useState('');
+  const [photoUri, setPhotoUri] = useState('');
   const [photoDescription, setPhotoDescription] = useState('');
+  const [photoPickerVisible, setPhotoPickerVisible] = useState(false);
 
   useEffect(() => {
     // Get connected patients if caretaker
     if (user?.role === 'caretaker' && user.connectedPatients) {
       const patients = user.connectedPatients.map(id => getPatientDetails(id)).filter(Boolean);
       setConnectedPatients(patients);
-      if (patients.length > 0 && !selectedPatientId) {
+      if (patients.length > 0 && !selectedPatientId && patients[0]) {
         setSelectedPatientId(patients[0].id);
       }
     }
@@ -35,9 +39,80 @@ export default function HomeScreen() {
     }
   }, [user, selectedPatientId]);
 
+  const requestPermissions = async () => {
+    if (Platform.OS !== 'web') {
+      const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
+      const { status: libraryStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const { status: mediaLibraryStatus } = await MediaLibrary.requestPermissionsAsync();
+      
+      if (cameraStatus !== 'granted' || libraryStatus !== 'granted') {
+        Alert.alert('Permission required', 'Please grant camera and photo library permissions to use this feature.');
+        return false;
+      }
+      return true;
+    }
+    return true;
+  };
+
+  const takePhoto = async () => {
+    const hasPermission = await requestPermissions();
+    if (!hasPermission) return;
+
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled) {
+        // Compress the image to reduce size
+        const manipResult = await ImageManipulator.manipulateAsync(
+          result.assets[0].uri,
+          [{ resize: { width: 800 } }],
+          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+        );
+        
+        setPhotoUri(manipResult.uri);
+        setPhotoPickerVisible(false);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to take photo');
+    }
+  };
+
+  const pickImage = async () => {
+    const hasPermission = await requestPermissions();
+    if (!hasPermission) return;
+
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled) {
+        // Compress the image to reduce size
+        const manipResult = await ImageManipulator.manipulateAsync(
+          result.assets[0].uri,
+          [{ resize: { width: 800 } }],
+          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+        );
+        
+        setPhotoUri(manipResult.uri);
+        setPhotoPickerVisible(false);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to pick image');
+    }
+  };
+
   const handleAddPhoto = async () => {
-    if (!photoTitle.trim() || !photoUrl.trim()) {
-      Alert.alert('Error', 'Please fill in all required fields');
+    if (!photoTitle.trim() || !photoUri) {
+      Alert.alert('Error', 'Please provide a title and select a photo');
       return;
     }
 
@@ -50,10 +125,11 @@ export default function HomeScreen() {
 
       await addFamilyPhoto({
         title: photoTitle,
-        url: photoUrl,
+        uri: photoUri,
         description: photoDescription,
         uploadedAt: new Date().toISOString(),
         patientId,
+        isLocal: true,
       });
 
       // Refresh photos
@@ -62,7 +138,7 @@ export default function HomeScreen() {
       
       // Reset form
       setPhotoTitle('');
-      setPhotoUrl('');
+      setPhotoUri('');
       setPhotoDescription('');
       setModalVisible(false);
     } catch (error) {
@@ -143,7 +219,7 @@ export default function HomeScreen() {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll}>
               {familyPhotos.map(photo => (
                 <View key={photo.id} style={styles.photoCard}>
-                  <Image source={{ uri: photo.url }} style={styles.familyPhoto} />
+                  <Image source={{ uri: photo.uri }} style={styles.familyPhoto} />
                   <Text style={styles.photoTitle}>{photo.title}</Text>
                   {photo.description && (
                     <Text style={styles.photoDescription}>{photo.description}</Text>
@@ -240,7 +316,7 @@ export default function HomeScreen() {
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll}>
                   {familyPhotos.map(photo => (
                     <View key={photo.id} style={styles.photoCard}>
-                      <Image source={{ uri: photo.url }} style={styles.familyPhoto} />
+                      <Image source={{ uri: photo.uri }} style={styles.familyPhoto} />
                       <Text style={styles.photoTitle}>{photo.title}</Text>
                       {photo.description && (
                         <Text style={styles.photoDescription}>{photo.description}</Text>
@@ -336,13 +412,20 @@ export default function HomeScreen() {
             </View>
             
             <View style={styles.formGroup}>
-              <Text style={styles.label}>Photo URL</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="https://example.com/photo.jpg"
-                value={photoUrl}
-                onChangeText={setPhotoUrl}
-              />
+              <Text style={styles.label}>Photo</Text>
+              <TouchableOpacity 
+                style={styles.photoSelector}
+                onPress={() => setPhotoPickerVisible(true)}
+              >
+                {photoUri ? (
+                  <Image source={{ uri: photoUri }} style={styles.selectedPhoto} />
+                ) : (
+                  <View style={styles.photoPlaceholder}>
+                    <Camera color="#666" size={32} />
+                    <Text style={styles.photoPlaceholderText}>Tap to select photo</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
             </View>
             
             <View style={styles.formGroup}>
@@ -358,11 +441,52 @@ export default function HomeScreen() {
             </View>
             
             <TouchableOpacity 
-              style={styles.submitButton}
+              style={[styles.submitButton, !photoUri && styles.submitButtonDisabled]}
               onPress={handleAddPhoto}
+              disabled={!photoUri}
             >
               <Text style={styles.submitButtonText}>Add Photo</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Photo Picker Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={photoPickerVisible}
+        onRequestClose={() => setPhotoPickerVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.photoPickerContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Choose Photo</Text>
+              <TouchableOpacity 
+                onPress={() => setPhotoPickerVisible(false)}
+                style={styles.closeButton}
+              >
+                <X color="#666" size={24} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.photoOptions}>
+              <TouchableOpacity 
+                style={styles.photoOption}
+                onPress={takePhoto}
+              >
+                <Camera color="#4A90E2" size={40} />
+                <Text style={styles.photoOptionText}>Take Photo</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.photoOption}
+                onPress={pickImage}
+              >
+                <ImageIcon color="#50C878" size={40} />
+                <Text style={styles.photoOptionText}>Choose from Library</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -732,9 +856,66 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
   },
+  submitButtonDisabled: {
+    backgroundColor: '#a0c8f0',
+  },
   submitButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  photoSelector: {
+    width: '100%',
+    height: 200,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  photoPlaceholder: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  photoPlaceholderText: {
+    marginTop: 10,
+    color: '#666',
+    fontSize: 14,
+  },
+  selectedPhoto: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  photoPickerContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    width: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  photoOptions: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 20,
+    marginBottom: 10,
+  },
+  photoOption: {
+    alignItems: 'center',
+    padding: 15,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+    width: '45%',
+  },
+  photoOptionText: {
+    marginTop: 10,
+    color: '#333',
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
   },
 });

@@ -47,9 +47,10 @@ export interface WalkingRoute {
 
 export interface FamilyPhoto {
   id: string;
-  url: string;
+  uri: string;
   title: string;
   description?: string;
   uploadedAt: string;
   patientId: string;
+  isLocal?: boolean;
 }
