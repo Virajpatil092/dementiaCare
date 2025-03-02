@@ -1,8 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, TextInput, Modal, Alert, Platform } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, TextInput, Modal, Alert, Platform, ScrollView } from 'react-native';
 import { useAuth } from '../../context/auth';
-import { Navigation, MapPin, User, Plus, X, Flag, MapPinOff } from 'lucide-react-native';
-import { WalkingRoute } from '../../types/auth';
+import { Navigation, MapPin, User, Plus, X, Flag, MapPinOff, CornerDownRight, Volume2, VolumeX, Compass, AlertTriangle } from 'lucide-react-native';
+import { WalkingRoute, RouteDirection } from '../../types/auth';
+import * as Location from 'expo-location';
+import * as Speech from 'expo-speech';
+import { getDistance, isPointWithinRadius } from 'geolib';
 
 // Mock MapView component for web
 const MockMapView = ({ children, style, initialRegion, onPress }: any) => (
@@ -30,10 +33,35 @@ const MockPolyline = ({ coordinates, strokeColor, strokeWidth }: any) => (
   <View style={{ display: 'none' }} />
 );
 
+// Mock Circle component for web
+const MockCircle = ({ center, radius, fillColor, strokeColor }: any) => (
+  <View style={{ display: 'none' }} />
+);
+
 // Use actual components or mocks based on platform
 const MapViewComponent = Platform.OS === 'web' ? MockMapView : require('react-native-maps').default;
 const MarkerComponent = Platform.OS === 'web' ? MockMarker : require('react-native-maps').Marker;
 const PolylineComponent = Platform.OS === 'web' ? MockPolyline : require('react-native-maps').Polyline;
+const CircleComponent = Platform.OS === 'web' ? MockCircle : require('react-native-maps').Circle;
+
+// Import MapViewDirections conditionally
+let MapViewDirections: any = null;
+if (Platform.OS !== 'web') {
+  MapViewDirections = require('react-native-maps-directions').default;
+}
+
+// Mock directions for demo purposes
+const mockDirections: RouteDirection[] = [
+  { instruction: "Start walking north on Main Street", distance: 200, maneuver: "start", index: 0 },
+  { instruction: "Turn right onto Oak Avenue", distance: 150, maneuver: "turn-right", index: 1 },
+  { instruction: "Continue straight for 300 meters", distance: 300, maneuver: "straight", index: 2 },
+  { instruction: "Turn left onto Pine Road", distance: 250, maneuver: "turn-left", index: 3 },
+  { instruction: "You have arrived at your destination", distance: 0, maneuver: "arrive", index: 4 }
+];
+
+// Google Maps API Key - Replace with your actual key in a real app
+// For demo purposes, we'll use a placeholder
+const GOOGLE_MAPS_API_KEY = "YOUR_GOOGLE_MAPS_API_KEY";
 
 export default function MapScreen() {
   const { user, getWalkingRoutes, addWalkingRoute, getPatientDetails } = useAuth();
@@ -44,6 +72,18 @@ export default function MapScreen() {
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [connectedPatients, setConnectedPatients] = useState<any[]>([]);
   
+  // Location tracking state
+  const [location, setLocation] = useState<Location.LocationObject | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [locationPermission, setLocationPermission] = useState(false);
+  const [isTracking, setIsTracking] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [currentDirectionIndex, setCurrentDirectionIndex] = useState(0);
+  const [distanceToNextTurn, setDistanceToNextTurn] = useState<number | null>(null);
+  const [voiceGuidanceEnabled, setVoiceGuidanceEnabled] = useState(true);
+  const [showDirectionsPanel, setShowDirectionsPanel] = useState(false);
+  const [offRoute, setOffRoute] = useState(false);
+  
   // Route creation state
   const [routeName, setRouteName] = useState('');
   const [isCreatingRoute, setIsCreatingRoute] = useState(false);
@@ -51,18 +91,15 @@ export default function MapScreen() {
   const [startPoint, setStartPoint] = useState<{latitude: number, longitude: number} | null>(null);
   const [endPoint, setEndPoint] = useState<{latitude: number, longitude: number} | null>(null);
   const [routeCreationStep, setRouteCreationStep] = useState<'start' | 'end' | 'complete'>('start');
+  const [routeDirections, setRouteDirections] = useState<RouteDirection[]>([]);
 
-  // Mock data for demonstration
-  const patientLocation = {
-    latitude: 37.78825,
-    longitude: -122.4324,
-  };
+  // Refs
+  const mapRef = useRef<any>(null);
+  const locationSubscription = useRef<Location.LocationSubscription | null>(null);
+  const directionsUpdateTimer = useRef<NodeJS.Timeout | null>(null);
 
-  const safeZone = {
-    latitude: 37.78825,
-    longitude: -122.4324,
-    radius: 1000, // meters
-  };
+  // Safe zone radius (in meters)
+  const safeZoneRadius = 1000;
 
   useEffect(() => {
     // Get connected patients if caretaker
@@ -83,7 +120,283 @@ export default function MapScreen() {
         setSelectedRoute(patientRoutes[0]);
       }
     }
+
+    // Request location permissions
+    (async () => {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setErrorMsg('Permission to access location was denied');
+        return;
+      }
+      
+      setLocationPermission(true);
+      
+      // Get initial location
+      let initialLocation = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Highest
+      });
+      setLocation(initialLocation);
+      
+      // If patient, start tracking location
+      if (isPatient) {
+        startLocationTracking();
+      }
+    })();
+
+    // Cleanup function
+    return () => {
+      if (locationSubscription.current) {
+        locationSubscription.current.remove();
+      }
+      if (directionsUpdateTimer.current) {
+        clearInterval(directionsUpdateTimer.current);
+      }
+      if (Speech.isSpeakingAsync()) {
+        Speech.stop();
+      }
+    };
   }, [user, selectedPatientId]);
+
+  // Start location tracking
+  const startLocationTracking = async () => {
+    if (!locationPermission) {
+      Alert.alert('Permission Required', 'Location permission is needed to track your position.');
+      return;
+    }
+    
+    // Stop any existing subscription
+    if (locationSubscription.current) {
+      locationSubscription.current.remove();
+    }
+    
+    // Start new subscription
+    locationSubscription.current = await Location.watchPositionAsync(
+      {
+        accuracy: Location.Accuracy.BestForNavigation,
+        distanceInterval: 10, // Update every 10 meters
+        timeInterval: 5000 // Or every 5 seconds
+      },
+      (newLocation) => {
+        setLocation(newLocation);
+        
+        // Check if user is within safe zone
+        if (isPatient && location) {
+          const homeLocation = {
+            latitude: 37.78825,
+            longitude: -122.4324,
+          };
+          
+          const isInSafeZone = isPointWithinRadius(
+            { latitude: newLocation.coords.latitude, longitude: newLocation.coords.longitude },
+            homeLocation,
+            safeZoneRadius
+          );
+          
+          // If outside safe zone, we could trigger an alert to caretaker
+          // This would be implemented with a real backend
+          if (!isInSafeZone) {
+            console.log("Patient outside safe zone!");
+            // In a real app: sendAlertToCaretaker();
+          }
+        }
+        
+        // Update navigation if active
+        if (isNavigating && selectedRoute) {
+          updateNavigation(newLocation);
+        }
+      }
+    );
+    
+    setIsTracking(true);
+  };
+
+  // Stop location tracking
+  const stopLocationTracking = () => {
+    if (locationSubscription.current) {
+      locationSubscription.current.remove();
+      locationSubscription.current = null;
+    }
+    setIsTracking(false);
+  };
+
+  // Start navigation along a route
+  const startNavigation = () => {
+    if (!selectedRoute) {
+      Alert.alert('Error', 'Please select a route first');
+      return;
+    }
+    
+    if (!isTracking) {
+      startLocationTracking();
+    }
+    
+    // Use the route's directions if available, otherwise use mock directions
+    const directions = selectedRoute.directions || mockDirections;
+    setRouteDirections(directions);
+    setCurrentDirectionIndex(0);
+    setIsNavigating(true);
+    setShowDirectionsPanel(true);
+    
+    // Speak first direction if voice guidance is enabled
+    if (voiceGuidanceEnabled) {
+      Speech.speak(directions[0].instruction, {
+        language: 'en',
+        pitch: 1.0,
+        rate: 0.9
+      });
+    }
+    
+    // Start periodic updates for navigation
+    if (directionsUpdateTimer.current) {
+      clearInterval(directionsUpdateTimer.current);
+    }
+    
+    directionsUpdateTimer.current = setInterval(() => {
+      if (location && selectedRoute) {
+        updateNavigation(location);
+      }
+    }, 5000); // Update every 5 seconds
+  };
+
+  // Stop navigation
+  const stopNavigation = () => {
+    setIsNavigating(false);
+    setShowDirectionsPanel(false);
+    
+    if (directionsUpdateTimer.current) {
+      clearInterval(directionsUpdateTimer.current);
+      directionsUpdateTimer.current = null;
+    }
+    
+    if (Speech.isSpeakingAsync()) {
+      Speech.stop();
+    }
+  };
+
+  // Update navigation based on current location
+  const updateNavigation = (currentLocation: Location.LocationObject) => {
+    if (!selectedRoute || !currentLocation || routeDirections.length === 0) return;
+    
+    const currentCoords = {
+      latitude: currentLocation.coords.latitude,
+      longitude: currentLocation.coords.longitude
+    };
+    
+    // Check if we're off route
+    const routePoints = selectedRoute.coordinates;
+    let minDistanceToRoute = Number.MAX_VALUE;
+    
+    for (const point of routePoints) {
+      const distance = getDistance(
+        currentCoords,
+        point
+      );
+      
+      if (distance < minDistanceToRoute) {
+        minDistanceToRoute = distance;
+      }
+    }
+    
+    // If more than 50 meters from route, consider off route
+    const isOffRoute = minDistanceToRoute > 50;
+    setOffRoute(isOffRoute);
+    
+    if (isOffRoute) {
+      if (voiceGuidanceEnabled) {
+        Speech.speak("You appear to be off route. Please return to the designated path.", {
+          language: 'en',
+          pitch: 1.0,
+          rate: 0.9
+        });
+      }
+      return;
+    }
+    
+    // Check distance to next turn point
+    if (currentDirectionIndex < routeDirections.length - 1) {
+      const nextTurnIndex = routeDirections[currentDirectionIndex + 1].index;
+      if (nextTurnIndex < routePoints.length) {
+        const nextTurnPoint = routePoints[nextTurnIndex];
+        
+        const distanceToTurn = getDistance(
+          currentCoords,
+          nextTurnPoint
+        );
+        
+        setDistanceToNextTurn(distanceToTurn);
+        
+        // If within 20 meters of the turn, advance to next direction
+        if (distanceToTurn < 20) {
+          const newIndex = currentDirectionIndex + 1;
+          setCurrentDirectionIndex(newIndex);
+          
+          // Speak the new direction if voice guidance is enabled
+          if (voiceGuidanceEnabled && newIndex < routeDirections.length) {
+            Speech.speak(routeDirections[newIndex].instruction, {
+              language: 'en',
+              pitch: 1.0,
+              rate: 0.9
+            });
+          }
+        } 
+        // If approaching turn (within 100m), give advance notice
+        else if (distanceToTurn < 100 && distanceToTurn > 50) {
+          if (voiceGuidanceEnabled) {
+            const nextDirection = routeDirections[currentDirectionIndex + 1];
+            Speech.speak(`In ${Math.round(distanceToTurn)} meters, ${nextDirection.instruction}`, {
+              language: 'en',
+              pitch: 1.0,
+              rate: 0.9
+            });
+          }
+        }
+      }
+    }
+    
+    // Check if we've reached the destination
+    if (currentDirectionIndex === routeDirections.length - 1) {
+      const finalPoint = routePoints[routePoints.length - 1];
+      const distanceToEnd = getDistance(
+        currentCoords,
+        finalPoint
+      );
+      
+      if (distanceToEnd < 20) {
+        if (voiceGuidanceEnabled) {
+          Speech.speak("You have reached your destination.", {
+            language: 'en',
+            pitch: 1.0,
+            rate: 0.9
+          });
+        }
+        
+        // End navigation
+        stopNavigation();
+        Alert.alert("Destination Reached", "Congratulations! You have completed your walk.");
+      }
+    }
+  };
+
+  // Toggle voice guidance
+  const toggleVoiceGuidance = () => {
+    setVoiceGuidanceEnabled(!voiceGuidanceEnabled);
+    
+    if (voiceGuidanceEnabled) {
+      // If turning off, stop any ongoing speech
+      if (Speech.isSpeakingAsync()) {
+        Speech.stop();
+      }
+    } else {
+      // If turning on, announce current direction
+      if (isNavigating && currentDirectionIndex < routeDirections.length) {
+        Speech.speak(routeDirections[currentDirectionIndex].instruction, {
+          language: 'en',
+          pitch: 1.0,
+          rate: 0.9
+        });
+      }
+    }
+  };
 
   const handleMapPress = (event: any) => {
     if (!isCreatingRoute) return;
@@ -100,6 +413,10 @@ export default function MapScreen() {
       if (startPoint) {
         const newRoutePoints = generateRoutePoints(startPoint, coordinate);
         setRoutePoints(newRoutePoints);
+        
+        // Generate mock directions for the route
+        const newDirections = generateMockDirections(newRoutePoints);
+        setRouteDirections(newDirections);
       }
       
       setRouteCreationStep('complete');
@@ -114,7 +431,7 @@ export default function MapScreen() {
     const points = [start];
     
     // Add some intermediate points (simplified)
-    const steps = 3; // Number of intermediate points
+    const steps = 5; // Number of intermediate points
     for (let i = 1; i <= steps; i++) {
       const fraction = i / (steps + 1);
       points.push({
@@ -125,6 +442,41 @@ export default function MapScreen() {
     
     points.push(end);
     return points;
+  };
+
+  // Generate mock directions for a route
+  const generateMockDirections = (points: {latitude: number, longitude: number}[]): RouteDirection[] => {
+    // In a real app, these would come from a directions API
+    const directions: RouteDirection[] = [];
+    
+    // Start direction
+    directions.push({
+      instruction: "Start walking north",
+      distance: 200,
+      maneuver: "start",
+      index: 0
+    });
+    
+    // Intermediate directions
+    for (let i = 1; i < points.length - 1; i++) {
+      const turn = i % 2 === 0 ? "right" : "left";
+      directions.push({
+        instruction: `Turn ${turn} at the intersection`,
+        distance: 150,
+        maneuver: `turn-${turn}`,
+        index: i
+      });
+    }
+    
+    // Final direction
+    directions.push({
+      instruction: "You have arrived at your destination",
+      distance: 0,
+      maneuver: "arrive",
+      index: points.length - 1
+    });
+    
+    return directions;
   };
 
   const handleAddRoute = async () => {
@@ -140,11 +492,12 @@ export default function MapScreen() {
         return;
       }
 
-      // Create a route with the selected points
+      // Create a route with the selected points and directions
       const newRoute: Omit<WalkingRoute, 'id'> = {
         name: routeName,
         coordinates: routePoints,
         patientId,
+        directions: routeDirections
       };
 
       await addWalkingRoute(newRoute);
@@ -167,6 +520,7 @@ export default function MapScreen() {
     setStartPoint(null);
     setEndPoint(null);
     setRouteCreationStep('start');
+    setRouteDirections([]);
     setModalVisible(false);
   };
 
@@ -195,53 +549,222 @@ export default function MapScreen() {
     resetRouteCreation();
   };
 
+  // Format distance for display
+  const formatDistance = (meters: number) => {
+    if (meters < 1000) {
+      return `${Math.round(meters)} m`;
+    } else {
+      return `${(meters / 1000).toFixed(1)} km`;
+    }
+  };
+
+  // Center map on current location
+  const centerOnLocation = () => {
+    if (location && mapRef.current) {
+      mapRef.current.animateToRegion({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      });
+    }
+  };
+
+  // Get icon for direction maneuver
+  const getManeuverIcon = (maneuver: string) => {
+    switch (maneuver) {
+      case 'turn-right':
+        return <CornerDownRight size={16} color="#4A90E2" style={{ transform: [{ rotate: '270deg' }] }} />;
+      case 'turn-left':
+        return <CornerDownRight size={16} color="#4A90E2" style={{ transform: [{ rotate: '180deg' }] }} />;
+      case 'straight':
+        return <CornerDownRight size={16} color="#4A90E2" style={{ transform: [{ rotate: '315deg' }] }} />;
+      default:
+        return <Navigation size={16} color="#4A90E2" />;
+    }
+  };
+
   const PatientMap = () => (
     <View style={styles.container}>
       <MapViewComponent
+        ref={mapRef}
         style={styles.map}
         initialRegion={{
-          ...patientLocation,
+          latitude: location?.coords.latitude || 37.78825,
+          longitude: location?.coords.longitude || -122.4324,
           latitudeDelta: 0.01,
           longitudeDelta: 0.01,
         }}
       >
-        <MarkerComponent
-          coordinate={patientLocation}
-          title="You are here"
-        >
-          <User color="#4A90E2" size={24} />
-        </MarkerComponent>
+        {/* User's current location */}
+        {location && (
+          <MarkerComponent
+            coordinate={{
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude,
+            }}
+            title="You are here"
+          >
+            <User color="#4A90E2" size={24} />
+          </MarkerComponent>
+        )}
 
+        {/* Safe zone circle */}
+        <CircleComponent
+          center={{
+            latitude: 37.78825,
+            longitude: -122.4324,
+          }}
+          radius={safeZoneRadius}
+          fillColor="rgba(74, 144, 226, 0.1)"
+          strokeColor="rgba(74, 144, 226, 0.5)"
+          strokeWidth={1}
+        />
+
+        {/* Selected route polyline */}
         {selectedRoute && (
           <PolylineComponent
             coordinates={selectedRoute.coordinates}
             strokeColor="#4A90E2"
-            strokeWidth={3}
+            strokeWidth={4}
+          />
+        )}
+
+        {/* Route directions using MapViewDirections (if not on web) */}
+        {Platform.OS !== 'web' && selectedRoute && isNavigating && MapViewDirections && (
+          <MapViewDirections
+            origin={selectedRoute.coordinates[0]}
+            destination={selectedRoute.coordinates[selectedRoute.coordinates.length - 1]}
+            waypoints={selectedRoute.coordinates.slice(1, -1)}
+            apikey={GOOGLE_MAPS_API_KEY}
+            strokeWidth={5}
+            strokeColor="#4A90E2"
+            optimizeWaypoints={true}
+            onStart={(params) => {
+              console.log(`Started routing between "${params.origin}" and "${params.destination}"`);
+            }}
+            onReady={result => {
+              console.log(`Distance: ${result.distance} km`);
+              console.log(`Duration: ${result.duration} min.`);
+            }}
+            onError={(errorMessage) => {
+              console.log('MapViewDirections error:', errorMessage);
+            }}
           />
         )}
       </MapViewComponent>
 
+      {/* Location tracking controls */}
+      <View style={styles.mapControls}>
+        <TouchableOpacity 
+          style={styles.mapControlButton}
+          onPress={centerOnLocation}
+        >
+          <Compass color="#333" size={24} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Voice guidance toggle */}
+      <TouchableOpacity 
+        style={styles.voiceToggle}
+        onPress={toggleVoiceGuidance}
+      >
+        {voiceGuidanceEnabled ? (
+          <Volume2 color="#4A90E2" size={24} />
+        ) : (
+          <VolumeX color="#999" size={24} />
+        )}
+      </TouchableOpacity>
+
+      {/* Off route warning */}
+      {offRoute && (
+        <View style={styles.offRouteWarning}>
+          <AlertTriangle color="#fff" size={20} />
+          <Text style={styles.offRouteText}>You are off route</Text>
+        </View>
+      )}
+
+      {/* Directions panel */}
+      {showDirectionsPanel && (
+        <View style={styles.directionsPanel}>
+          <View style={styles.directionsPanelHeader}>
+            <Text style={styles.directionsPanelTitle}>Turn-by-Turn Directions</Text>
+            <TouchableOpacity onPress={() => setShowDirectionsPanel(false)}>
+              <X color="#666" size={20} />
+            </TouchableOpacity>
+          </View>
+          
+          <View style={styles.currentDirectionCard}>
+            {currentDirectionIndex < routeDirections.length && (
+              <>
+                <View style={styles.currentDirectionHeader}>
+                  {getManeuverIcon(routeDirections[currentDirectionIndex].maneuver)}
+                  <Text style={styles.currentDirectionText}>
+                    {routeDirections[currentDirectionIndex].instruction}
+                  </Text>
+                </View>
+                
+                {distanceToNextTurn !== null && currentDirectionIndex < routeDirections.length - 1 && (
+                  <Text style={styles.distanceText}>
+                    {formatDistance(distanceToNextTurn)} to next turn
+                  </Text>
+                )}
+              </>
+            )}
+          </View>
+          
+          <ScrollView style={styles.upcomingDirections}>
+            {routeDirections.slice(currentDirectionIndex + 1).map((direction, index) => (
+              <View key={index} style={styles.upcomingDirectionItem}>
+                {getManeuverIcon(direction.maneuver)}
+                <Text style={styles.upcomingDirectionText}>
+                  {direction.instruction}
+                </Text>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
       <View style={styles.routePanel}>
         <Text style={styles.panelTitle}>Available Routes</Text>
         {routes.length > 0 ? (
-          routes.map(route => (
-            <TouchableOpacity
-              key={route.id}
-              style={[
-                styles.routeItem,
-                selectedRoute?.id === route.id && styles.routeItemActive
-              ]}
-              onPress={() => setSelectedRoute(route)}
-            >
-              <Navigation color={selectedRoute?.id === route.id ? "#fff" : "#4A90E2"} size={20} />
-              <Text style={[
-                styles.routeName,
-                selectedRoute?.id === route.id && styles.routeNameActive
-              ]}>
-                {route.name}
-              </Text>
-            </TouchableOpacity>
-          ))
+          <>
+            {routes.map(route => (
+              <TouchableOpacity
+                key={route.id}
+                style={[
+                  styles.routeItem,
+                  selectedRoute?.id === route.id && styles.routeItemActive
+                ]}
+                onPress={() => setSelectedRoute(route)}
+              >
+                <Navigation color={selectedRoute?.id === route.id ? "#fff" : "#4A90E2"} size={20} />
+                <Text style={[
+                  styles.routeName,
+                  selectedRoute?.id === route.id && styles.routeNameActive
+                ]}>
+                  {route.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+            
+            {selectedRoute && !isNavigating ? (
+              <TouchableOpacity 
+                style={styles.startNavigationButton}
+                onPress={startNavigation}
+              >
+                <Text style={styles.startNavigationText}>Start Navigation</Text>
+              </TouchableOpacity>
+            ) : isNavigating ? (
+              <TouchableOpacity 
+                style={styles.stopNavigationButton}
+                onPress={stopNavigation}
+              >
+                <Text style={styles.stopNavigationText}>Stop Navigation</Text>
+              </TouchableOpacity>
+            ) : null}
+          </>
         ) : (
           <Text style={styles.emptyText}>No routes available</Text>
         )}
@@ -252,20 +775,38 @@ export default function MapScreen() {
   const CaretakerMap = () => (
     <View style={styles.container}>
       <MapViewComponent
+        ref={mapRef}
         style={styles.map}
         initialRegion={{
-          ...patientLocation,
+          latitude: location?.coords.latitude || 37.78825,
+          longitude: location?.coords.longitude || -122.4324,
           latitudeDelta: 0.01,
           longitudeDelta: 0.01,
         }}
         onPress={handleMapPress}
       >
+        {/* Patient's last known location */}
         <MarkerComponent
-          coordinate={patientLocation}
+          coordinate={{
+            latitude: 37.78825,
+            longitude: -122.4324,
+          }}
           title="Patient Location"
         >
           <User color="#4A90E2" size={24} />
         </MarkerComponent>
+
+        {/* Safe zone circle */}
+        <CircleComponent
+          center={{
+            latitude: 37.78825,
+            longitude: -122.4324,
+          }}
+          radius={safeZoneRadius}
+          fillColor="rgba(74, 144, 226, 0.1)"
+          strokeColor="rgba(74, 144, 226, 0.5)"
+          strokeWidth={1}
+        />
 
         {/* Display existing routes */}
         {routes.map(route => (
@@ -448,6 +989,20 @@ export default function MapScreen() {
                 </View>
               </View>
             </View>
+
+            <View style={styles.directionsPreview}>
+              <Text style={styles.previewLabel}>Turn-by-Turn Directions:</Text>
+              <ScrollView style={styles.directionsPreviewList}>
+                {routeDirections.map((direction, index) => (
+                  <View key={index} style={styles.directionPreviewItem}>
+                    {getManeuverIcon(direction.maneuver)}
+                    <Text style={styles.directionPreviewText}>
+                      {direction.instruction}
+                    </Text>
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
             
             <TouchableOpacity 
               style={styles.submitButton}
@@ -614,7 +1169,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 20,
-    width: '80%',
+    width: '90%',
+    maxHeight: '80%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
@@ -653,7 +1209,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
     borderRadius: 8,
     padding: 12,
-    marginBottom: 20,
+    marginBottom: 15,
   },
   previewLabel: {
     fontSize: 14,
@@ -673,6 +1229,30 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 14,
     color: '#666',
+  },
+  directionsPreview: {
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 15,
+    maxHeight: 150,
+  },
+  directionsPreviewList: {
+    maxHeight: 120,
+  },
+  directionPreviewItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    paddingVertical: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e5e5',
+  },
+  directionPreviewText: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: '#666',
+    flex: 1,
   },
   submitButton: {
     backgroundColor: '#4A90E2',
@@ -696,5 +1276,153 @@ const styles = StyleSheet.create({
   creationText: {
     fontSize: 14,
     color: '#333',
+  },
+  mapControls: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+  },
+  mapControlButton: {
+    backgroundColor: '#fff',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 4,
+    marginBottom: 10,
+  },
+  voiceToggle: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    backgroundColor: '#fff',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  directionsPanel: {
+    position: 'absolute',
+    top: 80,
+    left: 20,
+    right: 20,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    maxHeight: '40%',
+  },
+  directionsPanelHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  directionsPanelTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  currentDirectionCard: {
+    backgroundColor: '#f0f8ff',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 10,
+    borderLeftWidth: 4,
+    borderLeftColor: '#4A90E2',
+  },
+  currentDirectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  currentDirectionText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginLeft: 8,
+    flex: 1,
+  },
+  distanceText: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 5,
+    marginLeft: 24,
+  },
+  upcomingDirections: {
+    maxHeight: 120,
+  },
+  upcomingDirectionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  upcomingDirectionText: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 8,
+    flex: 1,
+  },
+  startNavigationButton: {
+    backgroundColor: '#4A90E2',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  startNavigationText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  stopNavigationButton: {
+    backgroundColor: '#FF6B6B',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  stopNavigationText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  offRouteWarning: {
+    position: 'absolute',
+    top: 80,
+    alignSelf: 'center',
+    backgroundColor: '#FF6B6B',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+  offRouteText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 8,
   },
 });

@@ -41,25 +41,8 @@ const mockUsers: Record<string, { password: string } & User> = {
 
 // Mock data storage
 const mockMedications: Medication[] = [];
-const mockScheduleItems: ScheduleItem[] = [
-  { id: '1', time: '08:00 AM', title: 'Morning Medication', type: 'medication', completed: false, patientId: '1' },
-  { id: '2', time: '09:30 AM', title: 'Memory Game Session', type: 'activity', completed: false, patientId: '1' },
-  { id: '3', time: '10:30 AM', title: 'Morning Walk', type: 'exercise', completed: false, patientId: '1' },
-  { id: '4', time: '12:00 PM', title: 'Lunch Time', type: 'meal', completed: false, patientId: '1' },
-  { id: '5', time: '02:00 PM', title: 'Afternoon Medication', type: 'medication', completed: false, patientId: '1' },
-];
-const mockWalkingRoutes: WalkingRoute[] = [
-  {
-    id: '1',
-    name: 'Morning Walk',
-    coordinates: [
-      { latitude: 37.78825, longitude: -122.4324 },
-      { latitude: 37.78925, longitude: -122.4344 },
-      { latitude: 37.79025, longitude: -122.4354 },
-    ],
-    patientId: '1'
-  }
-];
+const mockScheduleItems: ScheduleItem[] = [];
+const mockWalkingRoutes: WalkingRoute[] = [];
 const mockFamilyPhotos: FamilyPhoto[] = [];
 const mockGames: Game[] = [
   {

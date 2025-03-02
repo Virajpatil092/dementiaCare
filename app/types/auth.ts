@@ -43,6 +43,14 @@ export interface WalkingRoute {
     longitude: number;
   }[];
   patientId: string;
+  directions?: RouteDirection[];
+}
+
+export interface RouteDirection {
+  instruction: string;
+  distance: number;
+  maneuver: string;
+  index: number;
 }
 
 export interface FamilyPhoto {
