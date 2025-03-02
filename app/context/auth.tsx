@@ -18,6 +18,8 @@ interface AuthContextType extends AuthState {
   updateScheduleItemStatus: (itemId: string, completed: boolean) => Promise<void>;
   addGame: (game: Omit<Game, 'id'>) => Promise<void>;
   getGames: (patientId: string) => Game[];
+  updateGame: (gameId: string, gameData: Partial<Game>) => Promise<void>;
+  deleteGame: (gameId: string) => Promise<void>;
 }
 
 // Mock users for development
@@ -44,35 +46,7 @@ const mockMedications: Medication[] = [];
 const mockScheduleItems: ScheduleItem[] = [];
 const mockWalkingRoutes: WalkingRoute[] = [];
 const mockFamilyPhotos: FamilyPhoto[] = [];
-const mockGames: Game[] = [
-  {
-    id: '1',
-    title: 'Memory Match',
-    description: 'Match pairs of cards to train your memory',
-    difficulty: 'Easy',
-    duration: '5-10 min',
-    icon: 'Brain',
-    patientId: '1'
-  },
-  {
-    id: '2',
-    title: 'Word Puzzle',
-    description: 'Find hidden words to enhance vocabulary',
-    difficulty: 'Medium',
-    duration: '10-15 min',
-    icon: 'Brain',
-    patientId: '1'
-  },
-  {
-    id: '3',
-    title: 'Pattern Recognition',
-    description: 'Identify and complete patterns',
-    difficulty: 'Hard',
-    duration: '15-20 min',
-    icon: 'Brain',
-    patientId: '1'
-  }
-];
+const mockGames: Game[] = [];
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -416,6 +390,65 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const updateGame = async (gameId: string, gameData: Partial<Game>) => {
+    try {
+      setState(prev => ({ ...prev, loading: true, error: null }));
+      
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      const gameIndex = mockGames.findIndex(game => game.id === gameId);
+      if (gameIndex !== -1) {
+        mockGames[gameIndex] = {
+          ...mockGames[gameIndex],
+          ...gameData
+        };
+      } else {
+        throw new Error('Game not found');
+      }
+      
+      setState(prev => ({
+        ...prev,
+        loading: false,
+        error: null,
+      }));
+    } catch (error) {
+      setState(prev => ({
+        ...prev,
+        loading: false,
+        error: 'Failed to update game',
+      }));
+    }
+  };
+
+  const deleteGame = async (gameId: string) => {
+    try {
+      setState(prev => ({ ...prev, loading: true, error: null }));
+      
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      const gameIndex = mockGames.findIndex(game => game.id === gameId);
+      if (gameIndex !== -1) {
+        mockGames.splice(gameIndex, 1);
+      } else {
+        throw new Error('Game not found');
+      }
+      
+      setState(prev => ({
+        ...prev,
+        loading: false,
+        error: null,
+      }));
+    } catch (error) {
+      setState(prev => ({
+        ...prev,
+        loading: false,
+        error: 'Failed to delete game',
+      }));
+    }
+  };
+
   const getGames = (patientId: string): Game[] => {
     return mockGames.filter(game => game.patientId === patientId);
   };
@@ -438,7 +471,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       getFamilyPhotos,
       updateScheduleItemStatus,
       addGame,
-      getGames
+      getGames,
+      updateGame,
+      deleteGame
     }}>
       {children}
     </AuthContext.Provider>

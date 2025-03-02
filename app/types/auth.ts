@@ -71,6 +71,9 @@ export interface Game {
   duration: string;
   icon: string;
   patientId: string;
+  gameType?: string;
+  customInstructions?: string;
+  enabled?: boolean;
 }
 
 export interface Message {

@@ -1,24 +1,31 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, TextInput, Modal, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, TextInput, Modal, Alert, Switch } from 'react-native';
 import { useAuth } from '../../context/auth';
-import { Brain, Trophy, Timer, Star, Plus, X, Settings, Play, ArrowLeft } from 'lucide-react-native';
+import { Brain, Trophy, Timer, Star, Plus, X, Settings, Play, ArrowLeft, Edit, Trash2, Copy } from 'lucide-react-native';
 
 export default function ActivitiesScreen() {
-  const { user, getGames, addGame, getPatientDetails } = useAuth();
+  const { user, getGames, addGame, getPatientDetails, updateGame, deleteGame } = useAuth();
   const isPatient = user?.role === 'patient';
   const [games, setGames] = useState([]);
   const [selectedGame, setSelectedGame] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [gameScore, setGameScore] = useState(0);
   const [modalVisible, setModalVisible] = useState(false);
+  const [editMode, setEditMode] = useState(false);
   const [selectedPatientId, setSelectedPatientId] = useState(null);
   const [connectedPatients, setConnectedPatients] = useState([]);
   
-  // Form state for creating a new game
+  // Form state for creating/editing a game
   const [gameTitle, setGameTitle] = useState('');
   const [gameDescription, setGameDescription] = useState('');
   const [gameDifficulty, setGameDifficulty] = useState('Easy');
   const [gameDuration, setGameDuration] = useState('5-10 min');
+  const [gameType, setGameType] = useState('memory');
+  const [customInstructions, setCustomInstructions] = useState('');
+  const [gameEnabled, setGameEnabled] = useState(true);
+  const [editingGameId, setEditingGameId] = useState(null);
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const [gameToDelete, setGameToDelete] = useState(null);
 
   useEffect(() => {
     // Get connected patients if caretaker
@@ -45,33 +52,126 @@ export default function ActivitiesScreen() {
     }
 
     try {
-      const patientId = selectedPatientId;
+      const patientId = isPatient ? user?.id : selectedPatientId;
       if (!patientId) {
         Alert.alert('Error', 'No patient selected');
         return;
       }
 
-      await addGame({
-        title: gameTitle,
-        description: gameDescription,
-        difficulty: gameDifficulty,
-        duration: gameDuration,
-        patientId,
-        icon: 'Brain',
-      });
+      if (editMode && editingGameId) {
+        // Update existing game
+        await updateGame(editingGameId, {
+          title: gameTitle,
+          description: gameDescription,
+          difficulty: gameDifficulty,
+          duration: gameDuration,
+          patientId,
+          icon: 'Brain',
+          gameType,
+          customInstructions,
+          enabled: gameEnabled
+        });
+      } else {
+        // Add new game
+        await addGame({
+          title: gameTitle,
+          description: gameDescription,
+          difficulty: gameDifficulty,
+          duration: gameDuration,
+          patientId,
+          icon: 'Brain',
+          gameType,
+          customInstructions,
+          enabled: gameEnabled
+        });
+      }
 
       // Refresh games
       const updatedGames = getGames(patientId);
       setGames(updatedGames);
       
       // Reset form
-      setGameTitle('');
-      setGameDescription('');
-      setGameDifficulty('Easy');
-      setGameDuration('5-10 min');
-      setModalVisible(false);
+      resetForm();
     } catch (error) {
-      Alert.alert('Error', 'Failed to add game');
+      Alert.alert('Error', 'Failed to save game');
+    }
+  };
+
+  const resetForm = () => {
+    setGameTitle('');
+    setGameDescription('');
+    setGameDifficulty('Easy');
+    setGameDuration('5-10 min');
+    setGameType('memory');
+    setCustomInstructions('');
+    setGameEnabled(true);
+    setEditMode(false);
+    setEditingGameId(null);
+    setModalVisible(false);
+  };
+
+  const handleEditGame = (game) => {
+    setEditMode(true);
+    setEditingGameId(game.id);
+    setGameTitle(game.title);
+    setGameDescription(game.description);
+    setGameDifficulty(game.difficulty || 'Easy');
+    setGameDuration(game.duration || '5-10 min');
+    setGameType(game.gameType || 'memory');
+    setCustomInstructions(game.customInstructions || '');
+    setGameEnabled(game.enabled !== false); // Default to true if not specified
+    setModalVisible(true);
+  };
+
+  const handleDeleteGame = (game) => {
+    setGameToDelete(game);
+    setDeleteConfirmVisible(true);
+  };
+
+  const confirmDeleteGame = async () => {
+    if (!gameToDelete) return;
+    
+    try {
+      await deleteGame(gameToDelete.id);
+      
+      // Refresh games
+      const patientId = isPatient ? user?.id : selectedPatientId;
+      const updatedGames = getGames(patientId);
+      setGames(updatedGames);
+      
+      setDeleteConfirmVisible(false);
+      setGameToDelete(null);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to delete game');
+    }
+  };
+
+  const handleDuplicateGame = async (game) => {
+    try {
+      const patientId = isPatient ? user?.id : selectedPatientId;
+      if (!patientId) {
+        Alert.alert('Error', 'No patient selected');
+        return;
+      }
+
+      // Create a new game with the same properties but a different ID
+      await addGame({
+        title: `${game.title} (Copy)`,
+        description: game.description,
+        difficulty: game.difficulty,
+        duration: game.duration,
+        patientId,
+        icon: game.icon || 'Brain',
+        gameType: game.gameType || 'memory',
+        customInstructions: game.customInstructions || '',
+        enabled: game.enabled !== false
+      });
+
+      // Refresh games
+      const updatedGames = getGames(patientId);
+      setGames(updatedGames);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to duplicate game');
     }
   };
 
@@ -186,7 +286,9 @@ export default function ActivitiesScreen() {
         ) : (
           <>
             <Text style={styles.gameTitle}>{game.title}</Text>
-            <Text style={styles.gameInstructions}>Match pairs of cards to train your memory</Text>
+            <Text style={styles.gameInstructions}>
+              {game.customInstructions || "Match pairs of cards to train your memory"}
+            </Text>
             
             <View style={styles.cardsContainer}>
               {cards.map(card => (
@@ -271,7 +373,9 @@ export default function ActivitiesScreen() {
         ) : (
           <>
             <Text style={styles.gameTitle}>{game.title}</Text>
-            <Text style={styles.gameInstructions}>Unscramble the letters to form a word</Text>
+            <Text style={styles.gameInstructions}>
+              {game.customInstructions || "Unscramble the letters to form a word"}
+            </Text>
             
             <View style={styles.puzzleContainer}>
               <Text style={styles.scrambledWord}>{levels[currentLevel].scrambled}</Text>
@@ -373,7 +477,9 @@ export default function ActivitiesScreen() {
         ) : (
           <>
             <Text style={styles.gameTitle}>{game.title}</Text>
-            <Text style={styles.gameInstructions}>Find the next number in the sequence</Text>
+            <Text style={styles.gameInstructions}>
+              {game.customInstructions || "Find the next number in the sequence"}
+            </Text>
             
             <View style={styles.patternContainer}>
               <View style={styles.sequenceContainer}>
@@ -432,16 +538,44 @@ export default function ActivitiesScreen() {
     );
   };
 
+  // Custom game implementation
+  const CustomGame = ({ game }) => {
+    return (
+      <View style={styles.gameContainer}>
+        <View style={styles.gameHeader}>
+          <TouchableOpacity onPress={endGame} style={styles.backButton}>
+            <ArrowLeft color="#333" size={24} />
+            <Text style={styles.backButtonText}>Exit Game</Text>
+          </TouchableOpacity>
+        </View>
+        
+        <View style={styles.customGameContainer}>
+          <Text style={styles.gameTitle}>{game.title}</Text>
+          <Text style={styles.gameInstructions}>{game.customInstructions || "Follow the instructions provided by your caretaker."}</Text>
+          
+          <View style={styles.customGameContent}>
+            <Brain color="#4A90E2" size={64} />
+            <Text style={styles.customGameText}>
+              This is a custom activity created by your caretaker.
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
   const renderGame = () => {
     if (!selectedGame) return null;
     
-    switch(selectedGame.title) {
-      case 'Memory Match':
+    switch(selectedGame.gameType) {
+      case 'memory':
         return <MemoryGame game={selectedGame} />;
-      case 'Word Puzzle':
+      case 'word':
         return <WordPuzzleGame game={selectedGame} />;
-      case 'Pattern Recognition':
+      case 'pattern':
         return <PatternGame game={selectedGame} />;
+      case 'custom':
+        return <CustomGame game={selectedGame} />;
       default:
         // Default to memory game
         return <MemoryGame game={selectedGame} />;
@@ -476,7 +610,7 @@ export default function ActivitiesScreen() {
           </View>
 
           <View style={styles.gamesContainer}>
-            {games.map(game => (
+            {games.filter(game => game.enabled !== false).map(game => (
               <TouchableOpacity key={game.id} style={styles.gameCard} onPress={() => startGame(game)}>
                 <Brain color="#4A90E2" size={32} />
                 <View style={styles.gameInfo}>
@@ -485,6 +619,7 @@ export default function ActivitiesScreen() {
                   <View style={styles.gameMetaContainer}>
                     <Text style={styles.gameMeta}>{game.difficulty}</Text>
                     <Text style={styles.gameMeta}>{game.duration}</Text>
+                    <Text style={styles.gameType}>{getGameTypeLabel(game.gameType)}</Text>
                   </View>
                 </View>
                 <Play color="#4A90E2" size={24} />
@@ -496,6 +631,16 @@ export default function ActivitiesScreen() {
     </ScrollView>
   );
 
+  const getGameTypeLabel = (type) => {
+    switch(type) {
+      case 'memory': return 'Memory';
+      case 'word': return 'Word';
+      case 'pattern': return 'Pattern';
+      case 'custom': return 'Custom';
+      default: return 'Memory';
+    }
+  };
+
   const CaretakerActivities = () => (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
@@ -503,7 +648,10 @@ export default function ActivitiesScreen() {
           <Text style={styles.headerTitle}>Activity Management</Text>
           <TouchableOpacity 
             style={styles.addButton}
-            onPress={() => setModalVisible(true)}
+            onPress={() => {
+              resetForm();
+              setModalVisible(true);
+            }}
           >
             <Plus color="#fff" size={20} />
           </TouchableOpacity>
@@ -565,18 +713,41 @@ export default function ActivitiesScreen() {
         <Text style={styles.sectionTitle}>Manage Games</Text>
         {games.map(game => (
           <View key={game.id} style={styles.managementCard}>
-            <Brain color="#4A90E2" size={24} />
-            <View style={styles.managementInfo}>
-              <Text style={styles.managementTitle}>{game.title}</Text>
-              <Text style={styles.managementDescription}>{game.description}</Text>
-              <View style={styles.gameMetaContainer}>
-                <Text style={styles.gameMeta}>{game.difficulty}</Text>
-                <Text style={styles.gameMeta}>{game.duration}</Text>
+            <View style={styles.managementCardHeader}>
+              <Brain color="#4A90E2" size={24} />
+              <View style={styles.managementInfo}>
+                <Text style={styles.managementTitle}>{game.title}</Text>
+                <Text style={styles.managementDescription}>{game.description}</Text>
+                <View style={styles.gameMetaContainer}>
+                  <Text style={styles.gameMeta}>{game.difficulty}</Text>
+                  <Text style={styles.gameMeta}>{game.duration}</Text>
+                  <Text style={styles.gameType}>{getGameTypeLabel(game.gameType)}</Text>
+                  {game.enabled === false && (
+                    <Text style={styles.gameDisabled}>Disabled</Text>
+                  )}
+                </View>
               </View>
             </View>
-            <TouchableOpacity style={styles.managementButton}>
-              <Settings color="#fff" size={20} />
-            </TouchableOpacity>
+            <View style={styles.managementActions}>
+              <TouchableOpacity 
+                style={styles.actionButton}
+                onPress={() => handleEditGame(game)}
+              >
+                <Edit color="#4A90E2" size={20} />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.actionButton}
+                onPress={() => handleDuplicateGame(game)}
+              >
+                <Copy color="#50C878" size={20} />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.actionButton}
+                onPress={() => handleDeleteGame(game)}
+              >
+                <Trash2 color="#ff3b30" size={20} />
+              </TouchableOpacity>
+            </View>
           </View>
         ))}
       </View>
@@ -587,6 +758,7 @@ export default function ActivitiesScreen() {
     <>
       {isPatient ? <PatientActivities /> : <CaretakerActivities />}
       
+      {/* Game Creation/Edit Modal */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -596,7 +768,9 @@ export default function ActivitiesScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Create New Game</Text>
+              <Text style={styles.modalTitle}>
+                {editMode ? 'Edit Game' : 'Create New Game'}
+              </Text>
               <TouchableOpacity 
                 onPress={() => setModalVisible(false)}
                 style={styles.closeButton}
@@ -605,122 +779,243 @@ export default function ActivitiesScreen() {
               </TouchableOpacity>
             </View>
             
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Game Title</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g., Memory Match"
-                value={gameTitle}
-                onChangeText={setGameTitle}
-              />
-            </View>
-            
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Description</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                placeholder="Describe the game..."
-                value={gameDescription}
-                onChangeText={setGameDescription}
-                multiline
-                numberOfLines={3}
-              />
-            </View>
-            
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Difficulty</Text>
-              <View style={styles.difficultyButtons}>
-                <TouchableOpacity
-                  style={[
-                    styles.difficultyButton,
-                    gameDifficulty === 'Easy' && styles.difficultyButtonActive
-                  ]}
-                  onPress={() => setGameDifficulty('Easy')}
-                >
-                  <Text style={[
-                    styles.difficultyButtonText,
-                    gameDifficulty === 'Easy' && styles.difficultyButtonTextActive
-                  ]}>Easy</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[
-                    styles.difficultyButton,
-                    gameDifficulty === 'Medium' && styles.difficultyButtonActive
-                  ]}
-                  onPress={() => setGameDifficulty('Medium')}
-                >
-                  <Text style={[
-                    styles.difficultyButtonText,
-                    gameDifficulty === 'Medium' && styles.difficultyButtonTextActive
-                  ]}>Medium</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[
-                    styles.difficultyButton,
-                    gameDifficulty === 'Hard' && styles.difficultyButtonActive
-                  ]}
-                  onPress={() => setGameDifficulty('Hard')}
-                >
-                  <Text style={[
-                    styles.difficultyButtonText,
-                    gameDifficulty === 'Hard' && styles.difficultyButtonTextActive
-                  ]}>Hard</Text>
-                </TouchableOpacity>
+            <ScrollView style={styles.modalScroll}>
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Game Title</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g., Memory Match"
+                  value={gameTitle}
+                  onChangeText={setGameTitle}
+                />
               </View>
-            </View>
-            
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Duration</Text>
-              <View style={styles.durationButtons}>
-                <TouchableOpacity
-                  style={[
-                    styles.durationButton,
-                    gameDuration === '5-10 min' && styles.durationButtonActive
-                  ]}
-                  onPress={() => setGameDuration('5-10 min')}
-                >
-                  <Text style={[
-                    styles.durationButtonText,
-                    gameDuration === '5-10 min' && styles.durationButtonTextActive
-                  ]}>5-10 min</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[
-                    styles.durationButton,
-                    gameDuration === '10-15 min' && styles.durationButtonActive
-                  ]}
-                  onPress={() => setGameDuration('10-15 min')}
-                >
-                  <Text style={[
-                    styles.durationButtonText,
-                    gameDuration === '10-15 min' && styles.durationButtonTextActive
-                  ]}>10-15 min</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[
-                    styles.durationButton,
-                    gameDuration === '15-20 min' && styles.durationButtonActive
-                  ]}
-                  onPress={() => setGameDuration('15-20 min')}
-                >
-                  <Text style={[
-                    styles.durationButtonText,
-                    gameDuration === '15-20 min' && styles.durationButtonTextActive
-                  ]}>15-20 min</Text>
-                </TouchableOpacity>
+              
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Description</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  placeholder="Describe the game..."
+                  value={gameDescription}
+                  onChangeText={setGameDescription}
+                  multiline
+                  numberOfLines={3}
+                />
               </View>
-            </View>
+              
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Game Type</Text>
+                <View style={styles.gameTypeButtons}>
+                  <TouchableOpacity
+                    style={[
+                      styles.gameTypeButton,
+                      gameType === 'memory' && styles.gameTypeButtonActive
+                    ]}
+                    onPress={() => setGameType('memory')}
+                  >
+                    <Text style={[
+                      styles.gameTypeButtonText,
+                      gameType === 'memory' && styles.gameTypeButtonTextActive
+                    ]}>Memory</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[
+                      styles.gameTypeButton,
+                      gameType === 'word' && styles.gameTypeButtonActive
+                    ]}
+                    onPress={() => setGameType('word')}
+                  >
+                    <Text style={[
+                      styles.gameTypeButtonText,
+                      gameType === 'word' && styles.gameTypeButtonTextActive
+                    ]}>Word</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[
+                      styles.gameTypeButton,
+                      gameType === 'pattern' && styles.gameTypeButtonActive
+                    ]}
+                    onPress={() => setGameType('pattern')}
+                  >
+                    <Text style={[
+                      styles.gameTypeButtonText,
+                      gameType === 'pattern' && styles.gameTypeButtonTextActive
+                    ]}>Pattern</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[
+                      styles.gameTypeButton,
+                      gameType === 'custom' && styles.gameTypeButtonActive
+                    ]}
+                    onPress={() => setGameType('custom')}
+                  >
+                    <Text style={[
+                      styles.gameTypeButtonText,
+                      gameType === 'custom' && styles.gameTypeButtonTextActive
+                    ]}>Custom</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+              
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Difficulty</Text>
+                <View style={styles.difficultyButtons}>
+                  <TouchableOpacity
+                    style={[
+                      styles.difficultyButton,
+                      gameDifficulty === 'Easy' && styles.difficultyButtonActive
+                    ]}
+                    onPress={() => setGameDifficulty('Easy')}
+                  >
+                    <Text style={[
+                      styles.difficultyButtonText,
+                      gameDifficulty === 'Easy' && styles.difficultyButtonTextActive
+                    ]}>Easy</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[
+                      styles.difficultyButton,
+                      gameDifficulty === 'Medium' && styles.difficultyButtonActive
+                    ]}
+                    onPress={() => setGameDifficulty('Medium')}
+                  >
+                    <Text style={[
+                      styles.difficultyButtonText,
+                      gameDifficulty === 'Medium' && styles.difficultyButtonTextActive
+                    ]}>Medium</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[
+                      styles.difficultyButton,
+                      gameDifficulty === 'Hard' && styles.difficultyButtonActive
+                    ]}
+                    onPress={() => setGameDifficulty('Hard')}
+                  >
+                    <Text style={[
+                      styles.difficultyButtonText,
+                      gameDifficulty === 'Hard' && styles.difficultyButtonTextActive
+                    ]}>Hard</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+              
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Duration</Text>
+                <View style={styles.durationButtons}>
+                  <TouchableOpacity
+                    style={[
+                      styles.durationButton,
+                      gameDuration === '5-10 min' && styles.durationButtonActive
+                    ]}
+                    onPress={() => setGameDuration('5-10 min')}
+                  >
+                    <Text style={[
+                      styles.durationButtonText,
+                      gameDuration === '5-10 min' && styles.durationButtonTextActive
+                    ]}>5-10 min</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[
+                      styles.durationButton,
+                      gameDuration === '10-15 min' && styles.durationButtonActive
+                    ]}
+                    onPress={() => setGameDuration('10-15 min')}
+                  >
+                    <Text style={[
+                      styles.durationButtonText,
+                      gameDuration === '10-15 min' && styles.durationButtonTextActive
+                    ]}>10-15 min</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[
+                      styles.durationButton,
+                      gameDuration === '15-20 min' && styles.durationButtonActive
+                    ]}
+                    onPress={() => setGameDuration('15-20 min')}
+                  >
+                    <Text style={[
+                      styles.durationButtonText,
+                      gameDuration === '15-20 min' && styles.durationButtonTextActive
+                    ]}>15-20 min</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+              
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Custom Instructions</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  placeholder="Add custom instructions for the patient..."
+                  value={customInstructions}
+                  onChangeText={setCustomInstructions}
+                  multiline
+                  numberOfLines={4}
+                />
+              </View>
+              
+              <View style={styles.formGroup}>
+                <View style={styles.enabledContainer}>
+                  <Text style={styles.label}>Enable Game</Text>
+                  <Switch
+                    value={gameEnabled}
+                    onValueChange={setGameEnabled}
+                    trackColor={{ false: '#767577', true: '#81b0ff' }}
+                    thumbColor={gameEnabled ? '#4A90E2' : '#f4f3f4'}
+                  />
+                </View>
+                <Text style={styles.helperText}>
+                  Disabled games won't appear in the patient's game list
+                </Text>
+              </View>
+            </ScrollView>
             
             <TouchableOpacity 
               style={styles.submitButton}
               onPress={handleAddGame}
             >
-              <Text style={styles.submitButtonText}>Create Game</Text>
+              <Text style={styles.submitButtonText}>
+                {editMode ? 'Save Changes' : 'Create Game'}
+              </Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={deleteConfirmVisible}
+        onRequestClose={() => setDeleteConfirmVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.confirmModalContent}>
+            <Text style={styles.confirmTitle}>Delete Game</Text>
+            <Text style={styles.confirmText}>
+              Are you sure you want to delete "{gameToDelete?.title}"? This action cannot be undone.
+            </Text>
+            
+            <View style={styles.confirmButtons}>
+              <TouchableOpacity 
+                style={styles.cancelButton}
+                onPress={() => setDeleteConfirmVisible(false)}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.deleteButton}
+                onPress={confirmDeleteGame}
+              >
+                <Text style={styles.deleteButtonText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -800,6 +1095,7 @@ const styles = StyleSheet.create({
   gameMetaContainer: {
     flexDirection: 'row',
     marginTop: 10,
+    flexWrap: 'wrap',
   },
   gameMeta: {
     fontSize: 12,
@@ -809,6 +1105,24 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 4,
     marginRight: 8,
+    marginBottom: 4,
+  },
+  gameType: {
+    fontSize: 12,
+    color: '#fff',
+    backgroundColor: '#4A90E2',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    marginRight: 8,
+  },
+  gameDisabled: {
+    fontSize: 12,
+    color: '#fff',
+    backgroundColor: '#ff3b30',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
   },
   section: {
     padding: 20,
@@ -860,8 +1174,6 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   managementCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 15,
@@ -871,6 +1183,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
+  },
+  managementCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   managementInfo: {
     flex: 1,
@@ -886,15 +1202,16 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 2,
   },
-  managementButton: {
-    backgroundColor: '#4A90E2',
-    padding: 10,
-    borderRadius: 8,
+  managementActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 10,
   },
-  managementButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
+  actionButton: {
+    padding: 8,
+    marginLeft: 8,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 8,
   },
   addButton: {
     backgroundColor: '#4A90E2',
@@ -945,13 +1262,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 20,
-    width: '80%',
+    width: '90%',
     maxHeight: '80%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
+  },
+  modalScroll: {
+    maxHeight: '80%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1031,11 +1351,48 @@ const styles = StyleSheet.create({
   durationButtonTextActive: {
     color: '#fff',
   },
+  gameTypeButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -4,
+  },
+  gameTypeButton: {
+    flex: 1,
+    minWidth: '45%',
+    backgroundColor: '#f5f5f5',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    margin: 4,
+  },
+  gameTypeButtonActive: {
+    backgroundColor: '#4A90E2',
+  },
+  gameTypeButtonText: {
+    color: '#666',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  gameTypeButtonTextActive: {
+    color: '#fff',
+  },
+  enabledContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 5,
+  },
+  helperText: {
+    fontSize: 12,
+    color: '#666',
+    fontStyle: 'italic',
+  },
   submitButton: {
     backgroundColor: '#4A90E2',
     padding: 15,
     borderRadius: 8,
     alignItems: 'center',
+    marginTop: 10,
   },
   submitButtonText: {
     color: '#fff',
@@ -1243,5 +1600,69 @@ const styles = StyleSheet.create({
   },
   optionButtonTextSelected: {
     color: '#fff',
+  },
+  // Custom game styles
+  customGameContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  customGameContent: {
+    alignItems: 'center',
+    marginTop: 40,
+  },
+  customGameText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 20,
+  },
+  // Delete confirmation modal
+  confirmModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    width: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  confirmTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 10,
+  },
+  confirmText: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 20,
+  },
+  confirmButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  cancelButton: {
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    marginRight: 10,
+  },
+  cancelButtonText: {
+    color: '#666',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  deleteButton: {
+    backgroundColor: '#ff3b30',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  deleteButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
