@@ -7,8 +7,10 @@ export default function ProfileScreen() {
   const { user, signOut, connectToPatient, getPatientDetails } = useAuth();
   const isPatient = user?.role === 'patient';
   const [connectModalVisible, setConnectModalVisible] = useState(false);
+  const [DetailsModalVisible, setDetailsModalVisible] = useState(false);
   const [patientId, setPatientId] = useState('');
   const [connectedPatients, setConnectedPatients] = useState<any[]>([]);
+  const [DetailsId, setDetailsId] = useState('');
 
   // Fetch connected patients details
   React.useEffect(() => {
@@ -37,6 +39,11 @@ export default function ProfileScreen() {
     } catch (error) {
       Alert.alert('Error', 'Failed to connect to patient');
     }
+  };
+
+  const ShowDetails = (patientId: string) => {
+    setDetailsId(patientId);
+    setDetailsModalVisible(true);
   };
 
   const PatientProfile = () => (
@@ -153,7 +160,10 @@ export default function ProfileScreen() {
                   <Text style={styles.patientStatus}>Active</Text>
                 </View>
               </View>
-              <TouchableOpacity style={styles.viewDetailsButton}>
+              <TouchableOpacity 
+                style={styles.viewDetailsButton}
+                onPress={() => ShowDetails(patient.id)}
+              >
                 <Text style={styles.viewDetailsText}>View Details</Text>
               </TouchableOpacity>
             </View>
@@ -233,6 +243,38 @@ export default function ProfileScreen() {
             >
               <Text style={styles.modalButtonText}>Connect</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={DetailsModalVisible}
+        onRequestClose={() => setDetailsModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Patient Details</Text>
+              <TouchableOpacity 
+                onPress={() => setDetailsModalVisible(false)}
+                style={styles.closeButton}
+              >
+                <X color="#666" size={24} />
+              </TouchableOpacity>
+            </View>
+            
+            {DetailsId ? (
+              <View>
+                <Text style={styles.modalText}>Details for patient ID: {DetailsId}</Text>
+                {/* Add more detailed information about the patient here */}
+                <Text style={styles.modalText}>Name: {connectedPatients.find(patient => patient.id === DetailsId)?.name}</Text>
+                <Text style={styles.modalText}>Email: {connectedPatients.find(patient => patient.id === DetailsId)?.email}</Text>
+              </View>
+            ) : (
+              <Text style={styles.modalText}>No details available</Text>
+            )}
           </View>
         </View>
       </Modal>
