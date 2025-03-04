@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, TextInput, Modal, Alert } from 'react-native';
 import { useAuth } from '../../context/auth';
-import { Settings, LogOut, Bell, Shield, User, Heart, Plus, Link, X } from 'lucide-react-native';
+import { Settings, LogOut, Bell, Shield, User, Heart, Plus, Link, X, Calendar, MapPin, Brain, Activity, Phone, Mail, Clock, TriangleAlert as AlertTriangle } from 'lucide-react-native';
 
 export default function ProfileScreen() {
   const { user, signOut, connectToPatient, getPatientDetails } = useAuth();
   const isPatient = user?.role === 'patient';
   const [connectModalVisible, setConnectModalVisible] = useState(false);
-  const [DetailsModalVisible, setDetailsModalVisible] = useState(false);
+  const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [patientId, setPatientId] = useState('');
   const [connectedPatients, setConnectedPatients] = useState<any[]>([]);
-  const [DetailsId, setDetailsId] = useState('');
+  const [selectedPatientId, setSelectedPatientId] = useState('');
 
   // Fetch connected patients details
   React.useEffect(() => {
@@ -41,8 +41,8 @@ export default function ProfileScreen() {
     }
   };
 
-  const ShowDetails = (patientId: string) => {
-    setDetailsId(patientId);
+  const showPatientDetails = (patientId: string) => {
+    setSelectedPatientId(patientId);
     setDetailsModalVisible(true);
   };
 
@@ -162,7 +162,7 @@ export default function ProfileScreen() {
               </View>
               <TouchableOpacity 
                 style={styles.viewDetailsButton}
-                onPress={() => ShowDetails(patient.id)}
+                onPress={() => showPatientDetails(patient.id)}
               >
                 <Text style={styles.viewDetailsText}>View Details</Text>
               </TouchableOpacity>
@@ -208,6 +208,7 @@ export default function ProfileScreen() {
     <View style={{ flex: 1 }}>
       {isPatient ? <PatientProfile /> : <CaretakerProfile />}
 
+      {/* Connect to Patient Modal */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -247,14 +248,15 @@ export default function ProfileScreen() {
         </View>
       </Modal>
 
+      {/* Patient Details Modal */}
       <Modal
         animationType="fade"
         transparent={true}
-        visible={DetailsModalVisible}
+        visible={detailsModalVisible}
         onRequestClose={() => setDetailsModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={styles.detailsModalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Patient Details</Text>
               <TouchableOpacity 
@@ -265,13 +267,174 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             </View>
             
-            {DetailsId ? (
-              <View>
-                <Text style={styles.modalText}>Details for patient ID: {DetailsId}</Text>
-                {/* Add more detailed information about the patient here */}
-                <Text style={styles.modalText}>Name: {connectedPatients.find(patient => patient.id === DetailsId)?.name}</Text>
-                <Text style={styles.modalText}>Email: {connectedPatients.find(patient => patient.id === DetailsId)?.email}</Text>
-              </View>
+            {selectedPatientId ? (
+              <ScrollView style={styles.detailsScrollView}>
+                {/* Patient Profile Section */}
+                <View style={styles.detailsSection}>
+                  <View style={styles.patientProfileHeader}>
+                    <Image 
+                      source={{ uri: 'https://images.unsplash.com/photo-1551076805-e1869033e561' }} 
+                      style={styles.detailsProfileImage} 
+                    />
+                    <View style={styles.patientProfileInfo}>
+                      <Text style={styles.detailsName}>
+                        {connectedPatients.find(patient => patient.id === selectedPatientId)?.name}
+                      </Text>
+                      <View style={styles.patientIdBadge}>
+                        <Text style={styles.patientIdText}>ID: {selectedPatientId}</Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Contact Information */}
+                <View style={styles.detailsSection}>
+                  <Text style={styles.detailsSectionTitle}>Contact Information</Text>
+                  <View style={styles.detailsCard}>
+                    <View style={styles.detailsRow}>
+                      <Mail color="#4A90E2" size={20} />
+                      <Text style={styles.detailsLabel}>Email:</Text>
+                      <Text style={styles.detailsValue}>
+                        {connectedPatients.find(patient => patient.id === selectedPatientId)?.email}
+                      </Text>
+                    </View>
+                    <View style={styles.detailsDivider} />
+                    <View style={styles.detailsRow}>
+                      <Phone color="#50C878" size={20} />
+                      <Text style={styles.detailsLabel}>Phone:</Text>
+                      <Text style={styles.detailsValue}>+1 (555) 123-4567</Text>
+                    </View>
+                    <View style={styles.detailsDivider} />
+                    <View style={styles.detailsRow}>
+                      <MapPin color="#FF69B4" size={20} />
+                      <Text style={styles.detailsLabel}>Address:</Text>
+                      <Text style={styles.detailsValue}>123 Memory Lane, Anytown, CA 94321</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Medical Information */}
+                <View style={styles.detailsSection}>
+                  <Text style={styles.detailsSectionTitle}>Medical Information</Text>
+                  <View style={styles.detailsCard}>
+                    <View style={styles.detailsRow}>
+                      <Activity color="#4A90E2" size={20} />
+                      <Text style={styles.detailsLabel}>Condition:</Text>
+                      <Text style={styles.detailsValue}>Early-stage Dementia</Text>
+                    </View>
+                    <View style={styles.detailsDivider} />
+                    <View style={styles.detailsRow}>
+                      <Clock color="#FFB347" size={20} />
+                      <Text style={styles.detailsLabel}>Diagnosed:</Text>
+                      <Text style={styles.detailsValue}>March 2023</Text>
+                    </View>
+                    <View style={styles.detailsDivider} />
+                    <View style={styles.detailsRow}>
+                      <Heart color="#FF69B4" size={20} />
+                      <Text style={styles.detailsLabel}>Blood Type:</Text>
+                      <Text style={styles.detailsValue}>A+</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Emergency Contacts */}
+                <View style={styles.detailsSection}>
+                  <Text style={styles.detailsSectionTitle}>Emergency Contacts</Text>
+                  <View style={styles.detailsCard}>
+                    <View style={styles.emergencyContact}>
+                      <View style={styles.emergencyContactHeader}>
+                        <User color="#4A90E2" size={20} />
+                        <Text style={styles.emergencyContactName}>Mary Johnson (Daughter)</Text>
+                      </View>
+                      <Text style={styles.emergencyContactDetail}>Phone: +1 (555) 987-6543</Text>
+                      <Text style={styles.emergencyContactDetail}>Email: mary.j@example.com</Text>
+                    </View>
+                    <View style={styles.detailsDivider} />
+                    <View style={styles.emergencyContact}>
+                      <View style={styles.emergencyContactHeader}>
+                        <User color="#4A90E2" size={20} />
+                        <Text style={styles.emergencyContactName}>Robert Smith (Son)</Text>
+                      </View>
+                      <Text style={styles.emergencyContactDetail}>Phone: +1 (555) 456-7890</Text>
+                      <Text style={styles.emergencyContactDetail}>Email: robert.s@example.com</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Recent Activity */}
+                <View style={styles.detailsSection}>
+                  <Text style={styles.detailsSectionTitle}>Recent Activity</Text>
+                  <View style={styles.detailsCard}>
+                    <View style={styles.activityItem}>
+                      <View style={styles.activityIcon}>
+                        <Brain color="#fff" size={16} />
+                      </View>
+                      <View style={styles.activityInfo}>
+                        <Text style={styles.activityTitle}>Memory Game</Text>
+                        <Text style={styles.activityTime}>Today, 10:30 AM</Text>
+                        <Text style={styles.activityDetail}>Completed with 85% accuracy</Text>
+                      </View>
+                    </View>
+                    <View style={styles.detailsDivider} />
+                    <View style={styles.activityItem}>
+                      <View style={[styles.activityIcon, styles.walkIcon]}>
+                        <MapPin color="#fff" size={16} />
+                      </View>
+                      <View style={styles.activityInfo}>
+                        <Text style={styles.activityTitle}>Morning Walk</Text>
+                        <Text style={styles.activityTime}>Yesterday, 9:15 AM</Text>
+                        <Text style={styles.activityDetail}>Completed 0.8 miles</Text>
+                      </View>
+                    </View>
+                    <View style={styles.detailsDivider} />
+                    <View style={styles.activityItem}>
+                      <View style={[styles.activityIcon, styles.medicationIcon]}>
+                        <Bell color="#fff" size={16} />
+                      </View>
+                      <View style={styles.activityInfo}>
+                        <Text style={styles.activityTitle}>Medication</Text>
+                        <Text style={styles.activityTime}>Yesterday, 8:00 AM</Text>
+                        <Text style={styles.activityDetail}>Took morning medication</Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Notes & Alerts */}
+                <View style={styles.detailsSection}>
+                  <Text style={styles.detailsSectionTitle}>Notes & Alerts</Text>
+                  <View style={styles.alertCard}>
+                    <AlertTriangle color="#FF6B6B" size={20} />
+                    <View style={styles.alertContent}>
+                      <Text style={styles.alertTitle}>Medication Reminder</Text>
+                      <Text style={styles.alertDescription}>
+                        Patient sometimes forgets evening medication. Extra reminder needed.
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.noteCard}>
+                    <Calendar color="#4A90E2" size={20} />
+                    <View style={styles.noteContent}>
+                      <Text style={styles.noteTitle}>Doctor's Appointment</Text>
+                      <Text style={styles.noteDescription}>
+                        Scheduled for June 15, 2025 at 2:30 PM with Dr. Williams.
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Action Buttons */}
+                <View style={styles.detailsActionButtons}>
+                  <TouchableOpacity style={styles.detailsActionButton}>
+                    <Calendar color="#fff" size={20} />
+                    <Text style={styles.detailsActionText}>Schedule</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.detailsActionButton, styles.messageButton]}>
+                    <Mail color="#fff" size={20} />
+                    <Text style={styles.detailsActionText}>Message</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
             ) : (
               <Text style={styles.modalText}>No details available</Text>
             )}
@@ -511,14 +674,28 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 5,
   },
+  detailsModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    width: '90%',
+    maxHeight: '85%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    overflow: 'hidden',
+  },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 15,
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
   },
@@ -547,5 +724,224 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  // Patient Details Modal Styles
+  detailsScrollView: {
+    padding: 20,
+  },
+  detailsSection: {
+    marginBottom: 20,
+  },
+  detailsSectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 12,
+  },
+  patientProfileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  detailsProfileImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 3,
+    borderColor: '#4A90E2',
+  },
+  patientProfileInfo: {
+    marginLeft: 15,
+    flex: 1,
+  },
+  detailsName: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 5,
+  },
+  patientIdBadge: {
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 15,
+    alignSelf: 'flex-start',
+  },
+  patientIdText: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '500',
+  },
+  detailsCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  detailsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  detailsLabel: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+    marginLeft: 10,
+    width: 80,
+  },
+  detailsValue: {
+    fontSize: 14,
+    color: '#333',
+    flex: 1,
+  },
+  detailsDivider: {
+    height: 1,
+    backgroundColor: '#f0f0f0',
+    marginVertical: 8,
+  },
+  emergencyContact: {
+    paddingVertical: 8,
+  },
+  emergencyContactHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 5,
+  },
+  emergencyContactName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginLeft: 10,
+  },
+  emergencyContactDetail: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 30,
+    marginTop: 3,
+  },
+  activityItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 10,
+  },
+  activityIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#4A90E2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  walkIcon: {
+    backgroundColor: '#50C878',
+  },
+  medicationIcon: {
+    backgroundColor: '#FFB347',
+  },
+  activityInfo: {
+    flex: 1,
+  },
+  activityTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  activityTime: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+  },
+  activityDetail: {
+    fontSize: 14,
+    color: '#666',
+  },
+  alertCard: {
+    backgroundColor: '#FFF5F5',
+    borderRadius: 12,
+    padding: 15,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 10,
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF6B6B',
+  },
+  alertContent: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  alertTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  alertDescription: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
+  },
+  noteCard: {
+    backgroundColor: '#F0F7FF',
+    borderRadius: 12,
+    padding: 15,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    borderLeftWidth: 4,
+    borderLeftColor: '#4A90E2',
+  },
+  noteContent: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  noteTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  noteDescription: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
+  },
+  detailsActionButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    marginBottom: 20,
+  },
+  detailsActionButton: {
+    backgroundColor: '#4A90E2',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 10,
+    flex: 1,
+    marginRight: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  messageButton: {
+    backgroundColor: '#50C878',
+    marginRight: 0,
+  },
+  detailsActionText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
   },
 });
