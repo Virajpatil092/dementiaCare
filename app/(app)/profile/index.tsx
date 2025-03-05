@@ -23,7 +23,7 @@ export default function ProfileScreen() {
   const handleConnectToPatient = async () => {
     if (!patientId.trim()) {
       Alert.alert('Error', 'Please enter a valid patient ID');
-      return;
+      return <View > Error </View>;
     }
 
     try {

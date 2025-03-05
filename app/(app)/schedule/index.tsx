@@ -2,15 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput, Modal } from 'react-native';
 import { useAuth } from '../../context/auth';
 import { Clock, Plus, X, Calendar, Bell, Brain, MapPin, Utensils } from 'lucide-react-native';
-
-type ScheduleItem = {
-  id: string;
-  time: string;
-  title: string;
-  type: string;
-  completed: boolean;
-  patientId: string;
-};
+import { ScheduleItem } from '@/app/types/auth';
 
 export default function ScheduleScreen() {
   const { user, getPatientDetails, getSchedule, addScheduleItem, updateScheduleItemStatus } = useAuth();
@@ -77,21 +69,21 @@ export default function ScheduleScreen() {
   const handleAddScheduleItem = async () => {
     if (!itemTitle.trim() || !itemTime.trim()) {
       Alert.alert('Error', 'Please fill in all required fields');
-      return;
+      return <View > Error </View>;
     }
 
     // Validate time format (HH:MM AM/PM)
     const timeRegex = /^(0?[1-9]|1[0-2]):[0-5][0-9]\s(AM|PM)$/;
     if (!timeRegex.test(itemTime)) {
       Alert.alert('Error', 'Please enter time in format: HH:MM AM/PM');
-      return;
+      return <View > Error </View>;
     }
 
     try {
       const patientId = isPatient ? user?.id : selectedPatientId;
       if (!patientId) {
         Alert.alert('Error', 'No patient selected');
-        return;
+        return <View > Error </View>;;
       }
 
       await addScheduleItem({

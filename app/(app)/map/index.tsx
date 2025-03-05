@@ -126,7 +126,7 @@ export default function MapScreen() {
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         setErrorMsg('Permission to access location was denied');
-        return;
+        return <View />;
       }
       
       setLocationPermission(true);
@@ -161,7 +161,7 @@ export default function MapScreen() {
   const startLocationTracking = async () => {
     if (!locationPermission) {
       Alert.alert('Permission Required', 'Location permission is needed to track your position.');
-      return;
+      return <View />;
     }
     
     // Stop any existing subscription
@@ -223,7 +223,7 @@ export default function MapScreen() {
   const startNavigation = () => {
     if (!selectedRoute) {
       Alert.alert('Error', 'Please select a route first');
-      return;
+      return <View />;
     }
     
     if (!isTracking) {
@@ -275,7 +275,7 @@ export default function MapScreen() {
 
   // Update navigation based on current location
   const updateNavigation = (currentLocation: Location.LocationObject) => {
-    if (!selectedRoute || !currentLocation || routeDirections.length === 0) return;
+    if (!selectedRoute || !currentLocation || routeDirections.length === 0) return <View />;
     
     const currentCoords = {
       latitude: currentLocation.coords.latitude,
@@ -309,7 +309,7 @@ export default function MapScreen() {
           rate: 0.9
         });
       }
-      return;
+      return <View />;
     }
     
     // Check distance to next turn point
@@ -399,7 +399,7 @@ export default function MapScreen() {
   };
 
   const handleMapPress = (event: any) => {
-    if (!isCreatingRoute) return;
+    if (!isCreatingRoute) return <View />;
     
     const { coordinate } = event.nativeEvent;
     
@@ -482,14 +482,14 @@ export default function MapScreen() {
   const handleAddRoute = async () => {
     if (!routeName.trim()) {
       Alert.alert('Error', 'Please enter a route name');
-      return;
+      return <View />;
     }
 
     try {
       const patientId = isPatient ? user?.id : selectedPatientId;
       if (!patientId) {
         Alert.alert('Error', 'No patient selected');
-        return;
+        return <View />;
       }
 
       // Create a route with the selected points and directions

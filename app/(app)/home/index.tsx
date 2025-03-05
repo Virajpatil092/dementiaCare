@@ -55,7 +55,7 @@ export default function HomeScreen() {
 
   const takePhoto = async () => {
     const hasPermission = await requestPermissions();
-    if (!hasPermission) return;
+    if (!hasPermission) return <View > Error </View>;
 
     try {
       const result = await ImagePicker.launchCameraAsync({
@@ -76,7 +76,7 @@ export default function HomeScreen() {
 
   const pickImage = async () => {
     const hasPermission = await requestPermissions();
-    if (!hasPermission) return;
+    if (!hasPermission) return <View > Error </View>;
 
     try {
       let result = await ImagePicker.launchImageLibraryAsync({
@@ -99,14 +99,14 @@ export default function HomeScreen() {
   const handleAddPhoto = async () => {
     if (!photoTitle.trim() || !photoUri) {
       Alert.alert('Error', 'Please provide a title and select a photo');
-      return;
+      return <View > Error </View>;
     }
 
     try {
       const patientId = isPatient ? user?.id : selectedPatientId;
       if (!patientId) {
         Alert.alert('Error', 'No patient selected');
-        return;
+        return <View > Error </View>;
       }
 
       await addFamilyPhoto({

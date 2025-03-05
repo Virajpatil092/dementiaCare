@@ -1,5 +1,8 @@
 import { createContext, useContext, useState } from 'react';
 import { AuthState, User, UserRole, Medication, ScheduleItem, WalkingRoute, FamilyPhoto, Game } from '../types/auth';
+import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
+import { addMinutes, addHours, parseISO, format } from 'date-fns';
 
 interface AuthContextType extends AuthState {
   signIn: (email: string, password: string) => Promise<void>;
@@ -22,7 +25,6 @@ interface AuthContextType extends AuthState {
   deleteGame: (gameId: string) => Promise<void>;
 }
 
-// Mock users for development
 const mockUsers: Record<string, { password: string } & User> = {
   'patient@example.com': {
     id: '1',
@@ -41,7 +43,6 @@ const mockUsers: Record<string, { password: string } & User> = {
   }
 };
 
-// Mock data storage
 const mockMedications: Medication[] = [];
 const mockScheduleItems: ScheduleItem[] = [];
 const mockWalkingRoutes: WalkingRoute[] = [];
@@ -61,7 +62,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
       
-      // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       const user = mockUsers[email];
@@ -88,7 +88,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
       
-      // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       if (mockUsers[email]) {
@@ -125,7 +124,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
       
-      // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 500));
 
       setState({
@@ -146,10 +144,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
       
-      // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // Find patient by ID
       const patientEntry = Object.entries(mockUsers).find(([_, user]) => user.id === patientId);
       
       if (!patientEntry || patientEntry[1].role !== 'patient') {
@@ -158,14 +154,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       const [patientEmail, patient] = patientEntry;
       
-      // Update caretaker's connected patients
       if (state.user && state.user.role === 'caretaker') {
         const updatedUser = {
           ...state.user,
           connectedPatients: [...(state.user.connectedPatients || []), patientId]
         };
         
-        // Update the mock user data
         if (mockUsers[state.user.email]) {
           mockUsers[state.user.email] = {
             ...mockUsers[state.user.email],
@@ -173,7 +167,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           };
         }
         
-        // Update patient's caretaker ID
         mockUsers[patientEmail] = {
           ...patient,
           caretakerId: state.user.id
@@ -209,7 +202,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
       
-      // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 500));
 
       const newMedication: Medication = {
@@ -241,13 +233,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
       
-      // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 500));
 
       const newItem: ScheduleItem = {
         ...item,
         id: Math.random().toString(),
       };
+      
+      if (Platform.OS !== 'web' && newItem.alarms?.length) {
+        const { status } = await Notifications.requestPermissionsAsync();
+        if (status === 'granted') {
+          for (const alarm of newItem.alarms) {
+            if (alarm.enabled) {
+              const [hours, minutes, period] = item.time.match(/(\d+):(\d+)\s(AM|PM)/)?.slice(1) || [];
+              let eventHours = parseInt(hours);
+              const eventMinutes = parseInt(minutes);
+              if (period === 'PM' && eventHours !== 12) eventHours += 12;
+              if (period === 'AM' && eventHours === 12) eventHours = 0;
+
+              const eventDate = new Date();
+              eventDate.setHours(eventHours, eventMinutes, 0);
+              
+              let alarmTime;
+              if (alarm.unit === 'minutes') {
+                alarmTime = addMinutes(eventDate, -parseInt(alarm.time));
+              } else {
+                alarmTime = addHours(eventDate, -parseInt(alarm.time));
+              }
+
+              await Notifications.scheduleNotificationAsync({
+                content: {
+                  title: `Reminder: ${item.title}`,
+                  body: `This event starts in ${alarm.time} ${alarm.unit}`,
+                  sound: alarm.sound,
+                  vibrate: alarm.vibration ? [0, 250, 250, 250] : undefined,
+                },
+                trigger: {
+                  date: alarmTime,
+                },
+              });
+            }
+          }
+        }
+      }
       
       mockScheduleItems.push(newItem);
       
@@ -273,7 +301,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
       
-      // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 300));
 
       const itemIndex = mockScheduleItems.findIndex(item => item.id === itemId);
@@ -302,7 +329,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
       
-      // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 500));
 
       const newRoute: WalkingRoute = {
@@ -334,7 +360,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
       
-      // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 500));
 
       const newPhoto: FamilyPhoto = {
@@ -366,10 +391,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
       
-      // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // Generate default content based on game type
       let content;
       switch (game.gameType) {
         case 'memory':
@@ -436,12 +459,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
       
-      // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 500));
 
       const gameIndex = mockGames.findIndex(game => game.id === gameId);
       if (gameIndex !== -1) {
-        // If updating content, merge with existing content
         if (gameData.content) {
           gameData.content = {
             ...mockGames[gameIndex].content,
@@ -475,7 +496,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
       
-      // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 500));
 
       const gameIndex = mockGames.findIndex(game => game.id === gameId);

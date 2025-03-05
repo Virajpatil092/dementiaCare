@@ -48,14 +48,14 @@ export default function ActivitiesScreen() {
   const handleAddGame = async () => {
     if (!gameTitle.trim() || !gameDescription.trim()) {
       Alert.alert('Error', 'Please fill in all required fields');
-      return;
+      return <View > Error </View>;
     }
 
     try {
       const patientId = isPatient ? user?.id : selectedPatientId;
       if (!patientId) {
         Alert.alert('Error', 'No patient selected');
-        return;
+        return <View > Error </View>;
       }
 
       if (editMode && editingGameId) {
@@ -129,7 +129,7 @@ export default function ActivitiesScreen() {
   };
 
   const confirmDeleteGame = async () => {
-    if (!gameToDelete) return;
+    if (!gameToDelete) return <View > Error </View>;
     
     try {
       await deleteGame(gameToDelete.id);
@@ -151,7 +151,7 @@ export default function ActivitiesScreen() {
       const patientId = isPatient ? user?.id : selectedPatientId;
       if (!patientId) {
         Alert.alert('Error', 'No patient selected');
-        return;
+        return <View > Error </View>;
       }
 
       // Create a new game with the same properties but a different ID
@@ -226,7 +226,7 @@ export default function ActivitiesScreen() {
     const handleCardClick = (id) => {
       // Don't allow flipping if already matched or already flipped
       if (matched.includes(id) || flipped.includes(id) || flipped.length === 2) {
-        return;
+        return <View > Error </View>;
       }
 
       // Flip the card

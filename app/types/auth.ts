@@ -1,4 +1,4 @@
-// Update the Game interface to include game content
+// Update the ScheduleItem interface to include alarm settings
 export type UserRole = 'patient' | 'caretaker';
 
 export interface User {
@@ -34,6 +34,13 @@ export interface ScheduleItem {
   type: string;
   completed: boolean;
   patientId: string;
+  alarms?: {
+    enabled: boolean;
+    time: string; // Time before event to trigger alarm (e.g., "15" for 15 minutes)
+    unit: 'minutes' | 'hours';
+    sound?: boolean;
+    vibration?: boolean;
+  }[];
 }
 
 export interface WalkingRoute {

@@ -47,11 +47,6 @@ export default function ChatScreen() {
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const inputRef = useRef<TextInput>(null);
 
-  // Redirect non-patients to home
-  if (user?.role !== 'patient') {
-    return <Redirect href="/home" />;
-  }
-
   useEffect(() => {
     // Load initial welcome message
     const initialMessages: Message[] = [
@@ -163,7 +158,7 @@ export default function ChatScreen() {
   };
 
   const handleSendMessage = async () => {
-    if (inputText.trim() === '') return;
+    if (inputText.trim() === '') return <View > Error </View>;
 
     const newMessage: Message = {
       id: Date.now().toString(),
@@ -232,7 +227,7 @@ export default function ChatScreen() {
     setIsRecording(false);
     setShowVoiceModal(false);
 
-    if(!recording) return;
+    if(!recording) return <View > Error </View>;
     
     try {
       // Stop recording
@@ -331,7 +326,7 @@ export default function ChatScreen() {
       Speech.stop();
       setIsPlaying(null);
       setIsSpeaking(null);
-      return;
+      return <View > Error </View>;
     }
 
     // If the message is already playing, stop it
@@ -344,7 +339,7 @@ export default function ChatScreen() {
       Speech.stop();
       setIsPlaying(null);
       setIsSpeaking(null);
-      return;
+      return <View > Error </View>;
     }
 
     setIsPlaying(messageId);
@@ -568,6 +563,11 @@ export default function ChatScreen() {
 
     </KeyboardAvoidingView>
   );
+
+  // Redirect non-patients to home
+  if (user?.role !== 'patient') {
+    return <Redirect href="/home" />;
+  }
 
   return (
     <View style={styles.container}>
