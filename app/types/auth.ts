@@ -1,3 +1,4 @@
+// Update the Game interface to include game content
 export type UserRole = 'patient' | 'caretaker';
 
 export interface User {
@@ -71,9 +72,24 @@ export interface Game {
   duration: string;
   icon: string;
   patientId: string;
-  gameType?: string;
+  gameType: 'memory' | 'word' | 'pattern';
   customInstructions?: string;
   enabled?: boolean;
+  content?: {
+    // For memory game
+    memoryCards?: string[];
+    // For word game
+    wordPairs?: Array<{
+      scrambled: string;
+      answer: string;
+    }>;
+    // For pattern game
+    patterns?: Array<{
+      sequence: number[];
+      options: number[];
+      answer: number;
+    }>;
+  };
 }
 
 export interface Message {

@@ -369,9 +369,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 500));
 
+      // Generate default content based on game type
+      let content;
+      switch (game.gameType) {
+        case 'memory':
+          content = {
+            memoryCards: game.content?.memoryCards || ['🍎', '🍌', '🍇', '🍊', '🍓', '🍉', '🍒', '🥝']
+          };
+          break;
+        case 'word':
+          content = {
+            wordPairs: game.content?.wordPairs || [
+              { scrambled: 'EALPP', answer: 'APPLE' },
+              { scrambled: 'ANABAN', answer: 'BANANA' },
+              { scrambled: 'RGEOAN', answer: 'ORANGE' },
+              { scrambled: 'WBRREYARTS', answer: 'STRAWBERRY' }
+            ]
+          };
+          break;
+        case 'pattern':
+          content = {
+            patterns: game.content?.patterns || [
+              {
+                sequence: [2, 4, 6, 8],
+                options: [10, 12, 14],
+                answer: 10
+              },
+              {
+                sequence: [1, 3, 6, 10],
+                options: [15, 16, 18],
+                answer: 15
+              },
+              {
+                sequence: [3, 6, 12, 24],
+                options: [36, 48, 60],
+                answer: 48
+              }
+            ]
+          };
+          break;
+      }
+
       const newGame: Game = {
         ...game,
         id: Math.random().toString(),
+        content
       };
       
       mockGames.push(newGame);
@@ -399,6 +441,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const gameIndex = mockGames.findIndex(game => game.id === gameId);
       if (gameIndex !== -1) {
+        // If updating content, merge with existing content
+        if (gameData.content) {
+          gameData.content = {
+            ...mockGames[gameIndex].content,
+            ...gameData.content
+          };
+        }
+
         mockGames[gameIndex] = {
           ...mockGames[gameIndex],
           ...gameData
