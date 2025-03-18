@@ -1,10 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Platform, SafeAreaView, Modal, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, TextInput, Modal, Alert, Platform, SafeAreaView } from 'react-native';
 import { useAuth } from '../../context/auth';
-import { Bell, Brain, MapPin, Calendar, CircleAlert as AlertCircle, Plus, X, Image as ImageIcon, Camera } from 'lucide-react-native';
+import { Bell, Brain, MapPin, Calendar, CircleAlert as AlertCircle, Plus, X, Image as ImageIcon, Camera, Navigation, Phone, Mail, Clock, Activity, Heart, AlertTriangle, Compass } from 'lucide-react-native';
 import { FamilyPhoto } from '../../types/auth';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
+import * as Location from 'expo-location';
+import { Circle } from "react-native-maps"
+
+// Mock MapView component for web
+const MockMapView = ({ children, style, initialRegion, onPress }: any) => (
+  <View style={[style, { backgroundColor: '#e0e0e0' }]}>
+    <Text style={{ textAlign: 'center', marginTop: 20 }}>
+      Map View (Not available on web)
+    </Text>
+    {children}
+  </View>
+);
+
+const MockMarker = ({ coordinate, title, description }: any) => (
+  <View style={{ display: 'none' }} />
+);
+
+const MapViewComponent = Platform.OS === 'web' ? MockMapView : require('react-native-maps').default;
+const MarkerComponent = Platform.OS === 'web' ? MockMarker : require('react-native-maps').Marker;
 
 export default function HomeScreen() {
   const { user, getFamilyPhotos, addFamilyPhoto, getPatientDetails } = useAuth();
@@ -19,6 +38,136 @@ export default function HomeScreen() {
   const [photoUri, setPhotoUri] = useState('');
   const [photoDescription, setPhotoDescription] = useState('');
   const [photoPickerVisible, setPhotoPickerVisible] = useState(false);
+
+
+  // Location tracking state
+  const [locationModalVisible, setLocationModalVisible] = useState(false);
+  const [patientLocation, setPatientLocation] = useState<Location.LocationObject | null>(null);
+  const [locationPermission, setLocationPermission] = useState(false);
+  const [locationSubscription, setLocationSubscription] = useState<Location.LocationSubscription | null>(null);
+  const [isOutsideSafeZone, setIsOutsideSafeZone] = useState(false);
+  const [lastUpdateTime, setLastUpdateTime] = useState<Date | null>(null);
+  const mapRef = React.useRef<any>(null);
+
+  // Safe zone configuration
+  const safeZoneCenter = {
+    latitude: 37.78825,
+    longitude: -122.4324,
+  };
+  const safeZoneRadius = 1000; // meters
+
+  useEffect(() => {
+    // Request location permissions
+    (async () => {
+      if (Platform.OS !== 'web') {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          setLocationPermission(true);
+          // Get initial location if patient
+          if (isPatient) {
+            const location = await Location.getCurrentPositionAsync({});
+            setPatientLocation(location);
+            setLastUpdateTime(new Date());
+            startLocationTracking();
+          }
+        }
+      }
+    })();
+
+    return () => {
+      // Cleanup location subscription
+      if (locationSubscription) {
+        locationSubscription.remove();
+      }
+    };
+  }, []);
+
+  const startLocationTracking = async () => {
+    if (!locationPermission) return;
+
+    const subscription = await Location.watchPositionAsync(
+      {
+        accuracy: Location.Accuracy.High,
+        timeInterval: 5000,
+        distanceInterval: 10,
+      },
+      (location) => {
+        setPatientLocation(location);
+        setLastUpdateTime(new Date());
+
+        // Check if outside safe zone
+        const distance = getDistance(
+          { 
+            latitude: location.coords.latitude, 
+            longitude: location.coords.longitude 
+          },
+          safeZoneCenter
+        );
+        
+        setIsOutsideSafeZone(distance > safeZoneRadius);
+        
+        if (distance > safeZoneRadius) {
+          // In a real app, you would send an alert to the caretaker
+          console.log("Patient outside safe zone!");
+        }
+      }
+    );
+
+    setLocationSubscription(subscription);
+  };
+
+  const centerOnPatient = () => {
+    if (patientLocation && mapRef.current) {
+      mapRef.current.animateToRegion({
+        latitude: patientLocation.coords.latitude,
+        longitude: patientLocation.coords.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      });
+    }
+  };
+
+  const formatLastUpdate = () => {
+    if (!lastUpdateTime) return 'Not available';
+    
+    const now = new Date();
+    const diff = now.getTime() - lastUpdateTime.getTime();
+    
+    if (diff < 60000) { // Less than 1 minute
+      return 'Just now';
+    } else if (diff < 3600000) { // Less than 1 hour
+      const minutes = Math.floor(diff / 60000);
+      return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+    } else {
+      return lastUpdateTime.toLocaleTimeString();
+    }
+  };
+
+  useEffect(() => {
+    // Request location permissions
+    (async () => {
+      if (Platform.OS !== 'web') {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          setLocationPermission(true);
+          // Get initial location if patient
+          if (isPatient) {
+            const location = await Location.getCurrentPositionAsync({});
+            setPatientLocation(location);
+            setLastUpdateTime(new Date());
+            startLocationTracking();
+          }
+        }
+      }
+    })();
+
+    return () => {
+      // Cleanup location subscription
+      if (locationSubscription) {
+        locationSubscription.remove();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     // Get connected patients if caretaker
@@ -219,6 +368,157 @@ export default function HomeScreen() {
     </ScrollView>
   );
 
+  const LocationTrackingModal = () => (
+    <Modal
+      animationType="slide"
+      transparent={true}
+      visible={locationModalVisible}
+      onRequestClose={() => setLocationModalVisible(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Patient Location</Text>
+            <TouchableOpacity 
+              onPress={() => setLocationModalVisible(false)}
+              style={styles.closeButton}
+            >
+              <X color="#666" size={24} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.mapContainer}>
+            <MapViewComponent
+              ref={mapRef}
+              style={styles.map}
+              initialRegion={{
+                latitude: patientLocation?.coords.latitude || safeZoneCenter.latitude,
+                longitude: patientLocation?.coords.longitude || safeZoneCenter.longitude,
+                latitudeDelta: 0.02,
+                longitudeDelta: 0.02,
+              }}
+            >
+              {/* Safe zone circle */}
+              <Circle
+                center={safeZoneCenter}
+                radius={safeZoneRadius}
+                fillColor="rgba(74, 144, 226, 0.1)"
+                strokeColor="rgba(74, 144, 226, 0.3)"
+                strokeWidth={2}
+              />
+
+              {/* Patient marker */}
+              {patientLocation && (
+                <MarkerComponent
+                  coordinate={{
+                    latitude: patientLocation.coords.latitude,
+                    longitude: patientLocation.coords.longitude,
+                  }}
+                  title="Patient Location"
+                  description={`Last updated: ${formatLastUpdate()}`}
+                >
+                  <View style={styles.markerContainer}>
+                    <View style={styles.markerInner}>
+                      <View style={styles.markerDot} />
+                    </View>
+                  </View>
+                </MarkerComponent>
+              )}
+
+              {/* Home marker */}
+              <MarkerComponent
+                coordinate={safeZoneCenter}
+                title="Home"
+                description="Safe zone center"
+              >
+                <View style={styles.homeMarker}>
+                  <View style={styles.homeMarkerInner} />
+                </View>
+              </MarkerComponent>
+            </MapViewComponent>
+
+            {/* Map controls */}
+            <View style={styles.mapControls}>
+              <TouchableOpacity 
+                style={styles.mapControlButton}
+                onPress={centerOnPatient}
+              >
+                <Compass color="#333" size={24} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Safe zone warning */}
+            {isOutsideSafeZone && (
+              <View style={styles.safeZoneWarning}>
+                <AlertTriangle color="#fff" size={20} />
+                <Text style={styles.safeZoneWarningText}>
+                  Patient is outside safe zone
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.locationDetails}>
+            <View style={styles.locationDetailItem}>
+              <Clock color="#4A90E2" size={20} />
+              <Text style={styles.locationDetailText}>
+                Last Updated: {formatLastUpdate()}
+              </Text>
+            </View>
+            <View style={styles.locationDetailItem}>
+              <Activity color={isOutsideSafeZone ? "#ff3b30" : "#50C878"} size={20} />
+              <Text style={[
+                styles.locationDetailText,
+                isOutsideSafeZone && styles.warningText
+              ]}>
+                Status: {isOutsideSafeZone ? 'Outside Safe Zone' : 'Within Safe Zone'}
+              </Text>
+            </View>
+            {patientLocation && (
+              <>
+                <View style={styles.locationDetailItem}>
+                  <MapPin color="#FFB347" size={20} />
+                  <Text style={styles.locationDetailText}>
+                    Lat: {patientLocation.coords.latitude.toFixed(6)}
+                  </Text>
+                </View>
+                <View style={styles.locationDetailItem}>
+                  <MapPin color="#FFB347" size={20} />
+                  <Text style={styles.locationDetailText}>
+                    Long: {patientLocation.coords.longitude.toFixed(6)}
+                  </Text>
+                </View>
+              </>
+            )}
+          </View>
+
+          <View style={styles.locationActions}>
+            <TouchableOpacity 
+              style={styles.locationActionButton}
+              onPress={() => {
+                // In a real app, implement phone call functionality
+                Alert.alert('Call Patient', 'This would initiate a phone call to the patient');
+              }}
+            >
+              <Phone color="#fff" size={20} />
+              <Text style={styles.locationActionText}>Call Patient</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.locationActionButton, styles.messageButton]}
+              onPress={() => {
+                // In a real app, implement messaging functionality
+                Alert.alert('Message Patient', 'This would open the messaging interface');
+              }}
+            >
+              <Mail color="#fff" size={20} />
+              <Text style={styles.locationActionText}>Send Message</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
   const CaretakerDashboard = () => (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       <SafeAreaView style={styles.safeArea}>
@@ -324,7 +624,7 @@ export default function HomeScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Quick Actions</Text>
               <View style={styles.activityGrid}>
-                <TouchableOpacity style={styles.activityCard}>
+                <TouchableOpacity style={styles.activityCard} onPress={() => setLocationModalVisible(true)}>
                   <MapPin color="#4A90E2" size={24} />
                   <Text style={styles.activityText}>Track Location</Text>
                 </TouchableOpacity>
@@ -369,6 +669,7 @@ export default function HomeScreen() {
   return (
     isPatient ? <PatientDashboard /> : 
     <><CaretakerDashboard />
+    <LocationTrackingModal />
       <Modal
         animationType="slide"
         transparent={true}
@@ -903,5 +1204,137 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     textAlign: 'center',
+  },
+  mapContainer: {
+    height: '50%',
+    width: '100%',
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  map: {
+    width: '100%',
+    height: '100%',
+  },
+  markerContainer: {
+    width: 40,
+    height: 40,
+    backgroundColor: 'rgba(74, 144, 226, 0.2)',
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  markerInner: {
+    width: 24,
+    height: 24,
+    backgroundColor: 'rgba(74, 144, 226, 0.4)',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  markerDot: {
+    width: 12,
+    height: 12,
+    backgroundColor: '#4A90E2',
+    borderRadius: 6,
+  },
+  homeMarker: {
+    width: 32,
+    height: 32,
+    backgroundColor: 'rgba(80, 200, 120, 0.2)',
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  homeMarkerInner: {
+    width: 16,
+    height: 16,
+    backgroundColor: '#50C878',
+    borderRadius: 8,
+  },
+  mapControls: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+  },
+  mapControlButton: {
+    backgroundColor: '#fff',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  safeZoneWarning: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    backgroundColor: '#ff3b30',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  safeZoneWarningText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  locationDetails: {
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  locationDetailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  locationDetailText: {
+    marginLeft: 10,
+    fontSize: 16,
+    color: '#333',
+  },
+  warningText: {
+    color: '#ff3b30',
+  },
+  locationActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  locationActionButton: {
+    backgroundColor: '#4A90E2',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    paddingHorizontal: 15,
+    borderRadius: 15,
+    flex: 1,
+    marginRight: 10,
+  },
+  messageButton: {
+    backgroundColor: '#50C878',
+    marginRight: 0,
+  },
+  locationActionText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
   },
 });

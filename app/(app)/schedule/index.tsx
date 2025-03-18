@@ -24,7 +24,7 @@ export default function ScheduleScreen() {
     if (user?.role === 'caretaker' && user.connectedPatients) {
       const patients = user.connectedPatients.map(id => getPatientDetails(id)).filter(Boolean);
       setConnectedPatients(patients);
-      if (patients.length > 0 && !selectedPatientId) {
+      if (patients.length > 0 && !selectedPatientId && patients[0]) {
         setSelectedPatientId(patients[0].id);
       }
     }
