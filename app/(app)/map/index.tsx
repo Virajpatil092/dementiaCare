@@ -15,7 +15,7 @@ const MockMapView = ({ children, style, initialRegion, onPress }: any) => (
     </Text>
     <TouchableOpacity 
       style={{ padding: 10, backgroundColor: '#f0f0f0', margin: 20, borderRadius: 8 }}
-      onPress={() => onPress?.({ nativeEvent: { coordinate: { latitude: 37.78825, longitude: -122.4324 } } })}
+      onPress={() => onPress?.({ nativeEvent: { coordinate: { latitude: 16.8457, longitude: 74.6015 } } })}
     >
       <Text style={{ textAlign: 'center' }}>Tap to simulate map press</Text>
     </TouchableOpacity>

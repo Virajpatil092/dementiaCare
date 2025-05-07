@@ -28,6 +28,8 @@ import {
 import * as Speech from 'expo-speech';
 import { Audio } from 'expo-av';
 import { Message } from '@/app/types/auth';
+import { GoogleGenerativeAI } from "@google/generative-ai"
+import * as FileSystem from "expo-file-system"
 
 export default function ChatScreen() {
   const { user } = useAuth();
@@ -46,6 +48,8 @@ export default function ChatScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const inputRef = useRef<TextInput>(null);
+  const genAI = new GoogleGenerativeAI("AIzaSyCqC2-pYbWeLmymK9ST5gemOYlaFOFDOfg");
+  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
   useEffect(() => {
     // Load initial welcome message
@@ -147,14 +151,15 @@ export default function ChatScreen() {
   const getAIResponse = async (userMessage: string) => {
     setIsLoading(true);
     
-    // Simulate AI thinking time
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    // Generate AI response based on context
-    let aiResponse = "I understand. Can you tell me more about that?";
-    
-    setIsLoading(false);
-    return aiResponse;
+    try {
+      const aiResponse = await model.generateContent("You are an AI assistant interacting with a dementia patient. Your tone should always be polite, warm, and friendly. Communicate in the patient's preferred language and keep the conversation natural and engaging. Avoid technical language, brackets, or any hints that you are an AI—your responses should feel as human as possible. Your priority is to make the patient feel comfortable, understood, and valued. If you recieve any bas364 file it is an audio file and reply to it in marathi only \n"+userMessage);
+      setIsLoading(false);
+      return aiResponse.response.text();
+    } catch (error) {
+      console.error("Error fetching AI response:", error);
+      setIsLoading(false);  // Important: Set loading to false even on error
+      return "Error: Could not get AI response"; // Return a default value or handle the error appropriately
+    }
   };
 
   const handleSendMessage = async () => {
@@ -243,6 +248,10 @@ export default function ChatScreen() {
       
       // Create a voice message with the recording
       if (uri) {
+        const audio = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        
         const newVoiceMessage: Message = {
           id: Date.now().toString(),
           text: "Voice message", // Placeholder text
@@ -254,10 +263,10 @@ export default function ChatScreen() {
         };
         
         setMessages(prev => [...prev, newVoiceMessage]);
+
+        const aiResponse = await getAIResponse(audio);
         
         // Get AI response
-        const aiResponse = await getAIResponse("Voice message received");
-        
         const responseMessage: Message = {
           id: (Date.now() + 1).toString(),
           text: aiResponse,

@@ -51,8 +51,8 @@ export default function HomeScreen() {
 
   // Safe zone configuration
   const safeZoneCenter = {
-    latitude: 37.78825,
-    longitude: -122.4324,
+    latitude: 16.8457,
+    longitude: 74.6015
   };
   const safeZoneRadius = 1000; // meters
 
