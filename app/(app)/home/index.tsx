@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, TextInput, Modal, Alert, Platform, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, TextInput, Modal, Alert, Platform, SafeAreaView, Linking, PermissionsAndroid } from 'react-native';
 import { useAuth } from '../../context/auth';
 import { Bell, Brain, MapPin, Calendar, CircleAlert as AlertCircle, Plus, X, Image as ImageIcon, Camera, Navigation, Phone, Mail, Clock, Activity, Heart, AlertTriangle, Compass } from 'lucide-react-native';
 import { FamilyPhoto } from '../../types/auth';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import * as Location from 'expo-location';
-import { Circle } from "react-native-maps"
+import { Circle } from "react-native-maps";
 
 // Mock MapView component for web
 const MockMapView = ({ children, style, initialRegion, onPress }: any) => (
@@ -95,7 +95,23 @@ export default function HomeScreen() {
         setPatientLocation(location);
         setLastUpdateTime(new Date());
 
-        // Check if outside safe zone
+        const getDistance = (point1: { latitude: number; longitude: number }, point2: { latitude: number; longitude: number }): number => {
+          const toRadians = (degrees: number) => degrees * (Math.PI / 180);
+          const earthRadius = 6371000; 
+
+          const dLat = toRadians(point2.latitude - point1.latitude);
+          const dLon = toRadians(point2.longitude - point1.longitude);
+
+          const lat1 = toRadians(point1.latitude);
+          const lat2 = toRadians(point2.latitude);
+
+          const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1) * Math.cos(lat2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+          return earthRadius * c;
+        };
+
         const distance = getDistance(
           { 
             latitude: location.coords.latitude, 
@@ -107,7 +123,6 @@ export default function HomeScreen() {
         setIsOutsideSafeZone(distance > safeZoneRadius);
         
         if (distance > safeZoneRadius) {
-          // In a real app, you would send an alert to the caretaker
           console.log("Patient outside safe zone!");
         }
       }
@@ -287,6 +302,51 @@ export default function HomeScreen() {
     setFamilyPhotos(photos);
   };
 
+  const SOS_NUMBER = '8421471098';
+  const sendSOSMessage = async () => {
+
+    const openSms = (body: string) => {
+      const separator = Platform.OS === 'android' ? '?' : '&';
+      const url = `sms:${SOS_NUMBER}${separator}body=${encodeURIComponent(body)}`;
+      Linking.openURL(url).catch((e) =>
+        console.error('Failed to open SMS composer', e)
+      );
+    };
+
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') {
+      console.warn('Permission to access location was denied');
+      openSms('🚨 Emergency! Please help. (Location unavailable)');
+      return;
+    }
+
+    try {
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+
+      const { latitude, longitude } = location.coords;
+      const mapsLink = `https://www.google.com/maps?q=${latitude},${longitude}`;
+      const message = `🚨 Emergency! Please help. My location: ${mapsLink}`;
+      openSms(message);
+    } catch (error) {
+      console.error('Location error:', error);
+      openSms('🚨 Emergency! Please help. (Location unavailable)');
+    }
+    finally {
+      makeSOSCall();
+    }
+  };
+
+  const makeSOSCall = () => {
+    const scheme = Platform.OS === 'ios' ? 'telprompt:' : 'tel:';
+    const url = `${scheme}${SOS_NUMBER}`;
+
+    Linking.openURL(url).catch((e) =>
+      console.error('Failed to initiate call', e)
+    );
+  };
+
   const PatientDashboard = () => (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       <SafeAreaView style={styles.safeArea}>
@@ -302,7 +362,7 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.quickActions}>
-          <TouchableOpacity style={styles.sosButton}>
+          <TouchableOpacity style={styles.sosButton} onPress={() => {sendSOSMessage()}}>
             <AlertCircle color="#fff" size={32} />
             <Text style={styles.sosText}>SOS</Text>
           </TouchableOpacity>
